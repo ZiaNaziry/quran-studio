@@ -229,7 +229,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     const aLineH = aSize * 1.6;
     const tSize = Math.round(translationSize * scale);
     const tLineH = tSize * 1.5;
-    const gap = 20 * scale;
+    const gap = 30 * scale;
 
     // Measure Arabic lines
     ctx.font = '600 ' + aSize + 'px serif';
@@ -242,41 +242,46 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       translationLines = measureTextLines(ctx, verse.translation, w * 0.75);
     }
 
-    // Total height: label + gap + arabic block + gap + translation block
-    let totalHeight = labelSize; // surah label
-    totalHeight += gap; // gap between label and arabic
-    totalHeight += arabicLines * aLineH; // arabic text
+    // Total height of all content blocks
+    let totalHeight = labelSize; // surah label line
+    totalHeight += gap; // space after label
+    totalHeight += arabicLines * aLineH; // all arabic lines
     if (translationLines > 0) {
-      totalHeight += gap; // gap between arabic and translation
-      totalHeight += translationLines * tLineH; // translation text
+      totalHeight += gap; // space before translation
+      totalHeight += translationLines * tLineH; // all translation lines
     }
 
-    // Start Y so everything is vertically centered
-    let startY = (h - totalHeight) / 2 + labelSize;
+    // Y cursor starts so the entire block is vertically centered
+    // Using textBaseline 'top' so fillText draws DOWN from the Y coordinate
+    ctx.textBaseline = 'top';
+    let cursorY = (h - totalHeight) / 2;
 
-    // Surah name — small label
+    // Surah name — small label at top of centered block
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.font = '500 ' + labelSize + 'px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.direction = 'ltr';
-    ctx.fillText(surah.englishName + ' - ' + t('studio.verse', lang) + ' ' + verse.numberInSurah, w / 2, startY);
-
-    startY += gap;
+    ctx.fillText(surah.englishName + ' - ' + t('studio.verse', lang) + ' ' + verse.numberInSurah, w / 2, cursorY);
+    cursorY += labelSize + gap;
 
     // Arabic text
     ctx.fillStyle = '#ffffff';
     ctx.font = '600 ' + aSize + 'px serif';
     ctx.direction = 'rtl';
     ctx.textAlign = 'center';
-    const nextY = wrapText(ctx, verse.text, w / 2, startY + aSize * 0.3, w * 0.8, aLineH);
+    cursorY = wrapText(ctx, verse.text, w / 2, cursorY, w * 0.8, aLineH);
 
     // Translation
     if (showTranslation && verse.translation) {
+      cursorY += gap * 0.5;
       ctx.direction = 'ltr';
       ctx.fillStyle = 'rgba(255,255,255,0.65)';
       ctx.font = '400 italic ' + tSize + 'px system-ui, sans-serif';
-      wrapText(ctx, verse.translation, w / 2, nextY + gap, w * 0.75, tLineH);
+      wrapText(ctx, verse.translation, w / 2, cursorY, w * 0.75, tLineH);
     }
+
+    // Reset baseline
+    ctx.textBaseline = 'alphabetic';
   }
 
   function loadBgImageAsync(): Promise<HTMLImageElement | null> {
