@@ -66,7 +66,6 @@ export default function FeedbackPage({ onBack, lang }: Props) {
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           Built by <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>Ahmad Zia Naziry</span>
         </p>
-        <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>zianaziry89@gmail.com</p>
       </div>
     </div>
   );

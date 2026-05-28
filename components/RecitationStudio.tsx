@@ -23,7 +23,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
   const [photoSearch, setPhotoSearch] = useState('');
   const [importedImage, setImportedImage] = useState<string | null>(null);
   const [showTranslation, setShowTranslation] = useState(true);
-  const [showSettings, setShowSettings] = useState(false);
+
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadType, setDownloadType] = useState('');
@@ -501,22 +501,13 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
               <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{verses.length} {verses.length > 1 ? t('verses.verseP', lang) : t('verses.verse', lang)}</p>
             </div>
           </div>
-          <button onClick={function() { setShowSettings(!showSettings); }} className="w-9 h-9 rounded-lg flex items-center justify-center lg:hidden" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--text-primary)' }}><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
-          </button>
+
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row" style={{ height: 'calc(100vh - 56px)' }}>
-        {/* Sidebar */}
-        <div className={'overflow-y-auto transition-all border-r ' + (showSettings ? 'fixed inset-0 z-40 lg:relative lg:inset-auto' : 'hidden lg:block')} style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', minWidth: '300px', maxWidth: showSettings ? '100%' : '340px' }} dir="ltr">
-          {showSettings && (
-            <div className="flex justify-end p-3 lg:hidden">
-              <button onClick={function() { setShowSettings(false); }} className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: 'var(--bg-card)' }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--text-primary)' }}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-          )}
+      <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-56px)]">
+        {/* Sidebar — visible always, scrolls below preview on mobile, side panel on desktop */}
+        <div className="order-2 lg:order-1 overflow-y-auto border-t lg:border-t-0 lg:border-r" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', minWidth: '300px' }} dir="ltr">
           <div className="p-4 space-y-5">
             {/* Format */}
             <div>
@@ -664,7 +655,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         </div>
 
         {/* Main area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="order-1 lg:order-2 flex-1 flex flex-col overflow-hidden">
           {/* Preview — NO border div */}
           <div className="flex-1 flex items-center justify-center p-4 sm:p-6 overflow-y-auto" style={{ background: 'var(--bg-primary)' }}>
             <div className="rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: format.ratio, maxHeight: '100%', maxWidth: '100%', width: format.id === 'portrait' ? 320 : format.id === 'square' ? 400 : format.id === 'social' ? 360 : 560 }}>
@@ -715,11 +706,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--text-primary)' }}><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
               </button>
             </div>
-            {/* Mobile download */}
-            <div className="flex gap-2 mt-3 lg:hidden">
-              <button onClick={downloadImage} disabled={isDownloading} className="flex-1 py-2.5 rounded-xl font-medium text-sm text-white flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: 'var(--accent)' }}>{t('studio.image', lang)}</button>
-              <button onClick={downloadVideo} disabled={isDownloading} className="flex-1 py-2.5 rounded-xl font-medium text-sm flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>{t('studio.video', lang)}</button>
-            </div>
+
           </div>
         </div>
       </div>
