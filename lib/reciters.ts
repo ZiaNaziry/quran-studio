@@ -1,23 +1,28 @@
-import { Reciter } from './types';
+export interface Reciter {
+  id: string;
+  name: string;
+  arabicName: string;
+  style: string;
+  folder: string;
+}
 
+// ALL reciters use everyayah.com (has CORS headers for video recording)
 export const reciters: Reciter[] = [
-  { id: 'alafasy', name: 'Mishary Rashid Alafasy', arabicName: '\u0645\u0634\u0627\u0631\u064a \u0631\u0627\u0634\u062f \u0627\u0644\u0639\u0641\u0627\u0633\u064a', style: 'Murattal', source: 'islamic_network', identifier: 'ar.alafasy' },
-  { id: 'abdulbasit', name: 'Abdul Basit Abdul Samad', arabicName: '\u0639\u0628\u062f \u0627\u0644\u0628\u0627\u0633\u0637 \u0639\u0628\u062f \u0627\u0644\u0635\u0645\u062f', style: 'Murattal', source: 'everyayah', identifier: 'Abdul_Basit_Murattal_192kbps' },
-  { id: 'sudais', name: 'Abdur-Rahman As-Sudais', arabicName: '\u0639\u0628\u062f\u0627\u0644\u0631\u062d\u0645\u0646 \u0627\u0644\u0633\u062f\u064a\u0633', style: 'Murattal', source: 'everyayah', identifier: 'Abdurrahmaan_As-Sudais_192kbps' },
-  { id: 'husary', name: 'Mahmoud Khalil Al-Husary', arabicName: '\u0645\u062d\u0645\u0648\u062f \u062e\u0644\u064a\u0644 \u0627\u0644\u062d\u0635\u0631\u064a', style: 'Murattal', source: 'islamic_network', identifier: 'ar.husary' },
-  { id: 'minshawi', name: 'Muhammad Siddiq Al-Minshawi', arabicName: '\u0645\u062d\u0645\u062f \u0635\u062f\u064a\u0642 \u0627\u0644\u0645\u0646\u0634\u0627\u0648\u064a', style: 'Murattal', source: 'islamic_network', identifier: 'ar.minshawi' },
-  { id: 'ayyoub', name: 'Muhammad Ayyoub', arabicName: '\u0645\u062d\u0645\u062f \u0623\u064a\u0648\u0628', style: 'Murattal', source: 'islamic_network', identifier: 'ar.muhammadayyoub' },
-  { id: 'akhdar', name: 'Ibrahim Al-Akhdar', arabicName: '\u0625\u0628\u0631\u0627\u0647\u064a\u0645 \u0627\u0644\u0623\u062e\u0636\u0631', style: 'Murattal', source: 'everyayah', identifier: 'Ibrahim_Akhdar_32kbps' },
-  { id: 'jibreel', name: 'Muhammad Jibreel', arabicName: '\u0645\u062d\u0645\u062f \u062c\u0628\u0631\u064a\u0644', style: 'Murattal', source: 'islamic_network', identifier: 'ar.muhammadjibreel' },
-  { id: 'dosari', name: 'Yasser Al-Dosari', arabicName: '\u064a\u0627\u0633\u0631 \u0627\u0644\u062f\u0648\u0633\u0631\u064a', style: 'Murattal', source: 'everyayah', identifier: 'Yasser_Ad-Dussary_128kbps' },
-  { id: 'ghamdi', name: 'Saad Al-Ghamdi', arabicName: '\u0633\u0639\u062f \u0627\u0644\u063a\u0627\u0645\u062f\u064a', style: 'Murattal', source: 'everyayah', identifier: 'Ghamadi_40kbps' },
+  { id: 'alafasy', name: 'Mishary Rashid Alafasy', arabicName: 'مشاري راشد العفاسي', style: 'Murattal', folder: 'Alafasy_128kbps' },
+  { id: 'basit', name: 'Abdul Basit Abdul Samad', arabicName: 'عبد الباسط عبد الصمد', style: 'Murattal', folder: 'Abdul_Basit_Murattal_192kbps' },
+  { id: 'sudais', name: 'Abdur-Rahman As-Sudais', arabicName: 'عبدالرحمن السديس', style: 'Murattal', folder: 'Abdurrahmaan_As-Sudais_192kbps' },
+  { id: 'maher', name: 'Maher Al-Muaiqly', arabicName: 'ماهر المعيقلي', style: 'Murattal', folder: 'MaherAlMuaiqly128kbps' },
+  { id: 'hani', name: 'Hani Ar-Rifai', arabicName: 'هاني الرفاعي', style: 'Murattal', folder: 'Hani_Rifai_192kbps' },
+  { id: 'shatri', name: 'Abu Bakr Al-Shatri', arabicName: 'أبو بكر الشاطري', style: 'Murattal', folder: 'Abu_Bakr_Ash-Shaatree_128kbps' },
+  { id: 'ghamdi', name: 'Saad Al-Ghamdi', arabicName: 'سعد الغامدي', style: 'Murattal', folder: 'Ghamadi_40kbps' },
+  { id: 'akhdar', name: 'Ibrahim Al-Akhdar', arabicName: 'إبراهيم الأخضر', style: 'Murattal', folder: 'Ibrahim_Akhdar_32kbps' },
+  { id: 'yasser', name: 'Yasser Al-Dosari', arabicName: 'ياسر الدوسري', style: 'Murattal', folder: 'Yasser_Ad-Dussary_128kbps' },
+  { id: 'ayyoub', name: 'Muhammad Ayyoub', arabicName: 'محمد أيوب', style: 'Murattal', folder: 'Muhammad_Ayyoub_128kbps' },
 ];
 
-export function getAudioUrl(reciter: Reciter, surahNumber: number, ayahInSurah: number, globalAyahNumber: number): string {
-  if (reciter.source === 'islamic_network') {
-    return 'https://cdn.islamic.network/quran/audio/128/' + reciter.identifier + '/' + globalAyahNumber + '.mp3';
-  }
+// ALL use everyayah.com — has CORS headers so fetch() works for video recording
+export function getAudioUrl(reciter: Reciter, surahNumber: number, ayahNumber: number, _globalNumber: number): string {
   const s = String(surahNumber).padStart(3, '0');
-  const a = String(ayahInSurah).padStart(3, '0');
-  return 'https://everyayah.com/data/' + reciter.identifier + '/' + s + a + '.mp3';
+  const a = String(ayahNumber).padStart(3, '0');
+  return 'https://everyayah.com/data/' + reciter.folder + '/' + s + a + '.mp3';
 }

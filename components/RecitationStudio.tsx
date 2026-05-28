@@ -278,7 +278,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     setTimeout(function() { setIsDownloading(false); setDownloadType(''); }, 500);
   }
 
-  // Download as video WITH AUDIO using AudioContext
+  // Download as video WITH AUDIO
   async function downloadVideo() {
     setIsDownloading(true);
     setDownloadType('video');
@@ -292,97 +292,115 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       const ctx = canvas.getContext('2d');
       if (!ctx) { alert('Canvas not supported'); setIsDownloading(false); return; }
 
+      // Draw first frame
       drawVerseOnCanvas(ctx, verses[0], format.width, format.height, bgImg);
 
-      // Create AudioContext for capturing audio
-      const audioCtx = new AudioContext();
+      // AudioContext to capture audio into the recording
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioCtxClass();
       const audioDest = audioCtx.createMediaStreamDestination();
 
-      // Combine canvas video + audio into one stream
+      // Combine canvas video + audio tracks
       const canvasStream = canvas.captureStream(30);
       const combinedStream = new MediaStream();
-      // Add video track from canvas
-      canvasStream.getVideoTracks().forEach(function(track) { combinedStream.addTrack(track); });
-      // Add audio track from AudioContext destination
-      audioDest.stream.getAudioTracks().forEach(function(track) { combinedStream.addTrack(track); });
+      canvasStream.getVideoTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
+      audioDest.stream.getAudioTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
 
-      // Find supported mime type
-      let mimeType = 'video/webm';
-      let ext = 'webm';
-      if (typeof MediaRecorder !== 'undefined') {
-        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) { mimeType = 'video/webm;codecs=vp8,opus'; }
-        else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) { mimeType = 'video/webm;codecs=vp9,opus'; }
-        else if (MediaRecorder.isTypeSupported('video/mp4')) { mimeType = 'video/mp4'; ext = 'mp4'; }
-      }
+      // Pick best supported codec
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+        ? 'video/webm;codecs=vp8,opus'
+        : MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+        ? 'video/webm;codecs=vp9,opus'
+        : 'video/webm';
 
-      const recorder = new MediaRecorder(combinedStream, { mimeType });
       const chunks: Blob[] = [];
-      recorder.ondataavailable = function(e) { if (e.data.size > 0) chunks.push(e.data); };
-      recorder.start(100);
+      const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 2500000 });
 
-      // Record each verse with audio piped through AudioContext
+      // Set ALL handlers BEFORE starting
+      recorder.ondataavailable = function(e) {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+      const stopPromise = new Promise<void>(function(resolve) {
+        recorder.onstop = function() { resolve(); };
+      });
+
+      recorder.start(200);
+
+      // Continuous canvas redraw with setInterval (more reliable than rAF)
+      let drawVerse = verses[0];
+      const frameTimer = setInterval(function() {
+        drawVerseOnCanvas(ctx, drawVerse, format.width, format.height, bgImg);
+      }, 33);
+
+      // Let recorder warm up
+      await new Promise(function(r) { setTimeout(r, 300); });
+
+      // Pre-fetch all audio to avoid mid-recording delays
+      setDownloadProgress(5);
+      const audioBuffers: (AudioBuffer | null)[] = [];
       for (let i = 0; i < verses.length; i++) {
-        setDownloadProgress(Math.round((i / verses.length) * 85));
         const verse = verses[i];
-
-        // Continuously draw frame
-        let keepDrawing = true;
-        const drawLoop = () => {
-          if (!keepDrawing) return;
-          drawVerseOnCanvas(ctx, verse, format.width, format.height, bgImg);
-          requestAnimationFrame(drawLoop);
-        };
-        requestAnimationFrame(drawLoop);
-
-        // Fetch audio as ArrayBuffer, decode, play through AudioContext
-        const audioUrl = getAudioUrl(reciter, surah.number, verse.numberInSurah, verse.number);
-        await new Promise<void>(function(resolve) {
-          const timeout = setTimeout(function() { resolve(); }, 60000);
-
-          fetch(audioUrl)
-            .then(function(res) { return res.arrayBuffer(); })
-            .then(function(arrayBuf) { return audioCtx.decodeAudioData(arrayBuf); })
-            .then(function(audioBuffer) {
-              const source = audioCtx.createBufferSource();
-              source.buffer = audioBuffer;
-              source.connect(audioDest);
-              // Also play so we can hear it (optional, but useful for feedback)
-              source.connect(audioCtx.destination);
-              source.onended = function() {
-                clearTimeout(timeout);
-                resolve();
-              };
-              source.start(0);
-            })
-            .catch(function() {
-              // If fetch/decode fails, wait 2 seconds of silence then continue
-              clearTimeout(timeout);
-              setTimeout(function() { resolve(); }, 2000);
-            });
-        });
-
-        keepDrawing = false;
-        // Small gap between verses
-        await new Promise(function(r) { setTimeout(r, 400); });
+        const url = getAudioUrl(reciter, surah.number, verse.numberInSurah, verse.number);
+        try {
+          const res = await fetch(url);
+          const ab = await res.arrayBuffer();
+          const decoded = await audioCtx.decodeAudioData(ab);
+          audioBuffers.push(decoded);
+        } catch {
+          audioBuffers.push(null);
+        }
+        setDownloadProgress(Math.round(5 + (i / verses.length) * 20));
       }
 
-      setDownloadProgress(90);
-      recorder.stop();
-      await new Promise<void>(function(resolve) { recorder.onstop = function() { resolve(); }; });
-      audioCtx.close();
+      // Record each verse
+      for (let i = 0; i < verses.length; i++) {
+        drawVerse = verses[i];
+        drawVerseOnCanvas(ctx, verses[i], format.width, format.height, bgImg);
+        setDownloadProgress(Math.round(25 + (i / verses.length) * 65));
 
-      const blob = new Blob(chunks, { type: mimeType });
-      const url = URL.createObjectURL(blob);
+        const buf = audioBuffers[i];
+        if (buf) {
+          await new Promise<void>(function(resolve) {
+            const src = audioCtx.createBufferSource();
+            src.buffer = buf;
+            src.connect(audioDest);
+            src.connect(audioCtx.destination);
+            src.onended = function() { resolve(); };
+            src.start(0);
+          });
+        } else {
+          await new Promise(function(r) { setTimeout(r, 3000); });
+        }
+
+        await new Promise(function(r) { setTimeout(r, 300); });
+      }
+
+      clearInterval(frameTimer);
+      setDownloadProgress(92);
+      recorder.stop();
+      await stopPromise;
+      await audioCtx.close();
+
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      if (blob.size < 1000) {
+        alert('Recording produced an empty file. Please try Chrome on desktop.');
+        setIsDownloading(false);
+        setDownloadType('');
+        return;
+      }
+
+      setDownloadProgress(98);
+      const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.download = surah.englishName.replace(/\s+/g, '-') + '-recitation.' + ext;
-      link.href = url;
+      link.download = surah.englishName.replace(/\s+/g, '-') + '-recitation.webm';
+      link.href = blobUrl;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 1000);
       setDownloadProgress(100);
-    } catch {
-      alert('Video recording failed. Try Chrome desktop for best results.');
+    } catch (err) {
+      alert('Video recording failed: ' + (err instanceof Error ? err.message : 'Unknown error') + '. Please use Chrome on desktop.');
     }
     setTimeout(function() { setIsDownloading(false); setDownloadType(''); }, 500);
   }
