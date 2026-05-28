@@ -24,6 +24,8 @@ const translations: Record<string, Record<Language, string>> = {
   'home.feat3.desc': { en: 'Download as video or image in portrait or landscape format', ar: 'حمّل كفيديو أو صورة بتنسيق عمودي أو أفقي', fa: 'به صورت ویدیو یا عکس در فرمت عمودی یا افقی دانلود کنید' },
   'home.feat4.title': { en: 'All 114 Surahs', ar: 'جميع 114 سورة', fa: 'تمام 114 سوره' },
   'home.feat4.desc': { en: 'Access the complete Holy Quran with translations', ar: 'الوصول إلى القرآن الكريم كاملاً مع الترجمة', fa: 'دسترسی به قرآن کریم کامل همراه با ترجمه' },
+  'home.dua': { en: 'I built this for the sake of Allah. I only ask for your duas (prayers). May Allah accept it from all of us.', ar: 'بنيت هذا لوجه الله تعالى. أسألكم فقط الدعاء. تقبل الله منا ومنكم.', fa: 'این را برای رضای خداوند ساختم. فقط دعایتان را می‌خواهم. خداوند از همه ما قبول کند.' },
+  'home.builtBy': { en: 'Built by', ar: 'بناه', fa: 'ساخته شده توسط' },
   'home.footer': { en: 'Built by Ahmad Zia Naziry', ar: 'بناه أحمد ضياء نظيري', fa: 'ساخته شده توسط احمد ضیاء نظیری' },
 
   // Surah Browser

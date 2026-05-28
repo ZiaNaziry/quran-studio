@@ -2,20 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-:root, [data-theme="dark"] {
-  --bg-primary: #0a0a1a;
-  --bg-secondary: #111827;
-  --bg-card: rgba(31, 41, 55, 0.8);
-  --bg-card-hover: rgba(55, 65, 81, 0.9);
-  --text-primary: #f9fafb;
-  --text-secondary: #9ca3af;
-  --accent: #6366f1;
-  --accent-hover: #4f46e5;
-  --accent-light: rgba(99, 102, 241, 0.15);
-  --border: rgba(75, 85, 99, 0.5);
-  --glass: rgba(17, 24, 39, 0.75);
-}
-[data-theme="light"] {
+:root, [data-theme="light"] {
   --bg-primary: #f8fafc;
   --bg-secondary: #ffffff;
   --bg-card: rgba(241, 245, 249, 0.9);
@@ -27,6 +14,19 @@
   --accent-light: rgba(79, 70, 229, 0.1);
   --border: rgba(203, 213, 225, 0.8);
   --glass: rgba(255, 255, 255, 0.85);
+}
+[data-theme="dark"] {
+  --bg-primary: #0a0a1a;
+  --bg-secondary: #111827;
+  --bg-card: rgba(31, 41, 55, 0.8);
+  --bg-card-hover: rgba(55, 65, 81, 0.9);
+  --text-primary: #f9fafb;
+  --text-secondary: #9ca3af;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-light: rgba(99, 102, 241, 0.15);
+  --border: rgba(75, 85, 99, 0.5);
+  --glass: rgba(17, 24, 39, 0.75);
 }
 [data-theme="emerald"] {
   --bg-primary: #021a13;

@@ -16,7 +16,7 @@ const themeOptions: { id: Theme; label: string }[] = [
 
 export default function Home() {
   const [view, setView] = useState<View>('home');
-  const [theme, setTheme] = useState<Theme>('dark');
+  const [theme, setTheme] = useState<Theme>('light');
   const [lang, setLang] = useState<Language>('en');
   const [selectedSurah, setSelectedSurah] = useState<Surah | null>(null);
   const [allVerses, setAllVerses] = useState<Verse[]>([]);
@@ -180,6 +180,19 @@ export default function Home() {
               ))}
             </div>
           </div>
+          {/* Dua Section */}
+          <div className="max-w-3xl mx-auto px-4 pb-16">
+            <div className="rounded-2xl border p-8 text-center animate-fade-in-up" style={{ background: 'linear-gradient(135deg, var(--accent-light), transparent)', borderColor: 'var(--border)' }}>
+              <p className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                {t('home.builtBy', lang)} <span style={{ color: 'var(--accent)', fontSize: '1.25rem', fontWeight: 700 }}>Ahmad Zia Naziry</span>
+              </p>
+              <div className="w-24 h-px mx-auto my-4" style={{ background: 'var(--border)' }} />
+              <p className="text-lg leading-relaxed max-w-lg mx-auto italic" style={{ color: 'var(--text-secondary)' }}>
+                &quot;{t('home.dua', lang)}&quot;
+              </p>
+            </div>
+          </div>
+
           {/* Footer */}
           <footer className="border-t py-8 text-center" style={{ borderColor: 'var(--border)' }}>
             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('home.footer', lang)}</p>
