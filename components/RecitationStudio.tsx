@@ -1,419 +1,411 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Surah, Verse, Reciter } from '../lib/types';
-import { reciters } from '../lib/reciters';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Surah, Verse } from '../lib/types';
+import { reciters, getAudioUrl } from '../lib/reciters';
+import { backgrounds, getGradientCSS } from '../lib/backgrounds';
 
-interface RecitationStudioProps {
+interface Props {
   surah: Surah;
   verses: Verse[];
   onBack: () => void;
 }
 
-const backgrounds = [
-  { id: 'ocean', name: 'Ocean Night', from: '#0c1445', to: '#0a0a0a' },
-  { id: 'emerald', name: 'Emerald Dark', from: '#022c22', to: '#0a0a0a' },
-  { id: 'purple', name: 'Twilight', from: '#2e1065', to: '#0a0a0a' },
-  { id: 'warm', name: 'Warm Night', from: '#451a03', to: '#0a0a0a' },
-  { id: 'midnight', name: 'Midnight', from: '#111827', to: '#000000' },
-  { id: 'rose', name: 'Rose Dawn', from: '#4c0519', to: '#0a0a0a' },
-];
-
-function getAudioUrl(surahNum: number, verseNum: number, subfolder: string): string {
-  const s = String(surahNum).padStart(3, '0');
-  const v = String(verseNum).padStart(3, '0');
-  return 'https://everyayah.com/data/' + subfolder + '/' + s + v + '.mp3';
-}
-
-export default function RecitationStudio({ surah, verses, onBack }: RecitationStudioProps) {
+export default function RecitationStudio({ surah, verses, onBack }: Props) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [reciter, setReciter] = useState<Reciter>(reciters[0]);
+  const [reciterIdx, setReciterIdx] = useState(0);
+  const [bgIdx, setBgIdx] = useState(0);
   const [showTranslation, setShowTranslation] = useState(true);
-  const [arabicSize, setArabicSize] = useState(36);
-  const [bgIndex, setBgIndex] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [genProgress, setGenProgress] = useState(0);
+  const [genType, setGenType] = useState<'image' | 'video' | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const currentVerse = verses[currentIndex];
-  const bg = backgrounds[bgIndex];
+  const reciter = reciters[reciterIdx];
+  const bg = backgrounds[bgIdx];
 
-  const clearProgress = useCallback(() => {
-    if (progressInterval.current) {
-      clearInterval(progressInterval.current);
-      progressInterval.current = null;
-    }
-  }, []);
-
-  const startProgressTracking = useCallback(() => {
-    clearProgress();
-    progressInterval.current = setInterval(() => {
-      if (audioRef.current) {
-        setProgress(audioRef.current.currentTime);
-        setDuration(audioRef.current.duration || 0);
-      }
-    }, 100);
-  }, [clearProgress]);
-
-  const playVerse = useCallback((index: number) => {
-    if (index < 0 || index >= verses.length) return;
-
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.removeAttribute('src');
-    }
-    clearProgress();
-
-    const verse = verses[index];
-    const url = getAudioUrl(surah.number, verse.numberInSurah, reciter.subfolder);
-    const audio = new Audio(url);
+  // Play audio for current verse
+  useEffect(() => {
+    if (!isPlaying || !currentVerse) return;
+    const audio = new Audio();
     audioRef.current = audio;
-    setCurrentIndex(index);
-    setProgress(0);
-    setDuration(0);
-
-    audio.addEventListener('loadedmetadata', () => {
-      setDuration(audio.duration);
-    });
-
-    audio.addEventListener('ended', () => {
-      clearProgress();
-      if (index < verses.length - 1) {
-        playVerse(index + 1);
+    const url = getAudioUrl(reciter, surah.number, currentVerse.numberInSurah, currentVerse.number);
+    audio.src = url;
+    audio.play().catch(() => {});
+    audio.onended = () => {
+      if (currentIndex < verses.length - 1) {
+        setCurrentIndex(prev => prev + 1);
       } else {
         setIsPlaying(false);
-        setProgress(0);
+        setCurrentIndex(0);
       }
-    });
-
-    audio.addEventListener('error', () => {
-      clearProgress();
-      if (index < verses.length - 1) {
-        playVerse(index + 1);
-      } else {
-        setIsPlaying(false);
-      }
-    });
-
-    audio.play().then(() => {
-      setIsPlaying(true);
-      startProgressTracking();
-    }).catch(() => {
-      setIsPlaying(false);
-    });
-  }, [verses, surah.number, reciter.subfolder, clearProgress, startProgressTracking]);
-
-  const togglePlay = useCallback(() => {
-    if (isPlaying && audioRef.current) {
-      audioRef.current.pause();
-      clearProgress();
-      setIsPlaying(false);
-    } else if (!isPlaying && audioRef.current && audioRef.current.src) {
-      audioRef.current.play().then(() => {
-        setIsPlaying(true);
-        startProgressTracking();
-      });
-    } else {
-      playVerse(currentIndex);
-    }
-  }, [isPlaying, currentIndex, playVerse, clearProgress, startProgressTracking]);
-
-  const goToVerse = useCallback((index: number) => {
-    if (isPlaying) {
-      playVerse(index);
-    } else {
-      setCurrentIndex(index);
-      setProgress(0);
-    }
-  }, [isPlaying, playVerse]);
-
-  useEffect(() => {
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      clearProgress();
     };
-  }, [clearProgress]);
+    return () => { audio.pause(); audio.src = ''; };
+  }, [isPlaying, currentIndex, reciterIdx]);
 
-  // When reciter changes, stop playback
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
+  const togglePlay = () => {
+    if (isPlaying) {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+    } else {
+      setIsPlaying(true);
     }
-    clearProgress();
-    setIsPlaying(false);
-    setProgress(0);
-  }, [reciter, clearProgress]);
-
-  const formatTime = (t: number) => {
-    if (!t || isNaN(t)) return '0:00';
-    const m = Math.floor(t / 60);
-    const s = Math.floor(t % 60);
-    return m + ':' + String(s).padStart(2, '0');
   };
 
+  const goNext = () => {
+    audioRef.current?.pause();
+    if (currentIndex < verses.length - 1) setCurrentIndex(prev => prev + 1);
+  };
+  const goPrev = () => {
+    audioRef.current?.pause();
+    if (currentIndex > 0) setCurrentIndex(prev => prev - 1);
+  };
+
+  // Canvas drawing helpers
+  const wrapText = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number): number => {
+    const words = text.split(' ');
+    let line = '';
+    let cy = y;
+    for (let i = 0; i < words.length; i++) {
+      const test = line ? line + ' ' + words[i] : words[i];
+      if (ctx.measureText(test).width > maxWidth && line) {
+        ctx.fillText(line, x, cy);
+        line = words[i];
+        cy += lineHeight;
+      } else {
+        line = test;
+      }
+    }
+    if (line) { ctx.fillText(line, x, cy); cy += lineHeight; }
+    return cy;
+  };
+
+  const drawFrame = (ctx: CanvasRenderingContext2D, verse: Verse, w: number, h: number) => {
+    // Background gradient
+    const grad = ctx.createLinearGradient(0, 0, w, h);
+    bg.colors.forEach((c, i) => grad.addColorStop(i / Math.max(bg.colors.length - 1, 1), c));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    // Dark overlay for readability
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(0, 0, w, h);
+    // Decorative border
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(40, 40, w - 80, h - 80);
+    // Surah name top
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = '600 ' + Math.round(w * 0.025) + 'px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(surah.englishName + ' - Verse ' + verse.numberInSurah, w / 2, h * 0.1);
+    // Arabic text
+    ctx.fillStyle = '#ffffff';
+    const arabicSize = Math.round(w * 0.045);
+    ctx.font = '700 ' + arabicSize + 'px Amiri, serif';
+    ctx.direction = 'rtl';
+    ctx.textAlign = 'center';
+    const arabicY = wrapText(ctx, verse.text, w / 2, h * 0.35, w * 0.75, arabicSize * 1.6);
+    // Translation
+    if (showTranslation && verse.translation) {
+      ctx.direction = 'ltr';
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      const engSize = Math.round(w * 0.022);
+      ctx.font = '400 ' + engSize + 'px Inter, sans-serif';
+      wrapText(ctx, verse.translation, w / 2, arabicY + 40, w * 0.7, engSize * 1.5);
+    }
+    // Watermark
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '400 ' + Math.round(w * 0.015) + 'px Inter, sans-serif';
+    ctx.direction = 'ltr';
+    ctx.textAlign = 'center';
+    ctx.fillText('Quran SM Download', w / 2, h * 0.94);
+  };
+
+  // Download Image
+  const downloadImage = useCallback(() => {
+    setGenType('image');
+    setIsGenerating(true);
+    setGenProgress(0);
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1080;
+      canvas.height = 1920;
+      const ctx = canvas.getContext('2d')!;
+      drawFrame(ctx, currentVerse, 1080, 1920);
+      setGenProgress(100);
+      const link = document.createElement('a');
+      link.download = surah.englishName + '-verse-' + currentVerse.numberInSurah + '.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (e) {
+      alert('Failed to generate image. Please try again.');
+    } finally {
+      setTimeout(() => { setIsGenerating(false); setGenType(null); }, 500);
+    }
+  }, [currentVerse, bg, showTranslation]);
+
+  // Download Video
+  const downloadVideo = useCallback(async () => {
+    setGenType('video');
+    setIsGenerating(true);
+    setGenProgress(0);
+
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1080;
+      canvas.height = 1920;
+      const ctx = canvas.getContext('2d')!;
+
+      const stream = canvas.captureStream(30);
+      let audioCtx: AudioContext | null = null;
+      let dest: MediaStreamAudioDestinationNode | null = null;
+
+      try {
+        audioCtx = new AudioContext();
+        dest = audioCtx.createMediaStreamDestination();
+        dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+      } catch {}
+
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+        ? 'video/webm;codecs=vp9,opus'
+        : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+          ? 'video/webm;codecs=vp8,opus'
+          : 'video/webm';
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      recorder.start(100);
+
+      for (let i = 0; i < verses.length; i++) {
+        setGenProgress(Math.round((i / verses.length) * 95));
+        const verse = verses[i];
+        drawFrame(ctx, verse, 1080, 1920);
+
+        // Try to play audio and wait for it
+        const url = getAudioUrl(reciter, surah.number, verse.numberInSurah, verse.number);
+        try {
+          if (audioCtx && dest) {
+            const resp = await fetch(url);
+            const buf = await resp.arrayBuffer();
+            const audioBuf = await audioCtx.decodeAudioData(buf);
+            const source = audioCtx.createBufferSource();
+            source.buffer = audioBuf;
+            source.connect(dest);
+            source.start();
+            await new Promise<void>(resolve => {
+              source.onended = () => resolve();
+              setTimeout(() => resolve(), (audioBuf.duration + 1) * 1000);
+            });
+          } else {
+            // Fallback: play audio normally and wait
+            const audio = new Audio(url);
+            audio.play().catch(() => {});
+            await new Promise<void>(resolve => {
+              audio.onended = () => resolve();
+              setTimeout(() => resolve(), 8000);
+            });
+          }
+        } catch {
+          await new Promise(r => setTimeout(r, 3000));
+        }
+        await new Promise(r => setTimeout(r, 300));
+      }
+
+      setGenProgress(100);
+      recorder.stop();
+      await new Promise<void>(resolve => { recorder.onstop = () => resolve(); });
+
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      const url2 = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url2;
+      a.download = surah.englishName + '-recitation.webm';
+      a.click();
+      URL.revokeObjectURL(url2);
+      if (audioCtx) audioCtx.close();
+    } catch (e) {
+      alert('Video generation failed. Try using Chrome on desktop for best results.');
+    } finally {
+      setIsGenerating(false);
+      setGenType(null);
+    }
+  }, [verses, bg, reciter, surah, showTranslation]);
+
   return (
-    <div className="min-h-screen bg-[#0a0a0a] flex flex-col lg:flex-row">
-      {/* Main Area */}
-      <div className="flex-1 flex flex-col">
-        {/* Top Bar */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800/50">
-          <button
-            onClick={() => { if (audioRef.current) audioRef.current.pause(); clearProgress(); onBack(); }}
-            className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-            <span>Back</span>
-          </button>
-          <div className="text-center">
-            <h2 className="text-white font-semibold">{surah.englishName}</h2>
-            <p className="text-zinc-500 text-xs">{verses.length} verses selected</p>
-          </div>
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="lg:hidden flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <span className="text-sm">Settings</span>
-          </button>
-        </div>
-
-        {/* Display Area */}
-        <div className="flex-1 flex items-center justify-center p-4 md:p-8">
-          <div
-            className="w-full max-w-3xl aspect-video rounded-2xl flex flex-col items-center justify-center p-8 md:p-12 relative overflow-hidden transition-all duration-700"
-            style={{
-              background: 'linear-gradient(135deg, ' + bg.from + ' 0%, ' + bg.to + ' 100%)',
-            }}
-          >
-            {/* Decorative elements */}
-            <div className="absolute top-0 left-0 w-full h-full opacity-5">
-              <div className="absolute top-4 left-4 w-32 h-32 border border-white/20 rounded-full" />
-              <div className="absolute bottom-4 right-4 w-48 h-48 border border-white/10 rounded-full" />
-            </div>
-
-            {/* Verse counter */}
-            <div className="absolute top-4 right-4 text-zinc-400 text-sm">
-              {currentIndex + 1} / {verses.length}
-            </div>
-
-            {/* Arabic text */}
-            <p
-              className="font-arabic text-white text-center leading-[1.8] mb-6 animate-fade-in max-w-full"
-              dir="rtl"
-              key={'ar-' + currentIndex}
-              style={{ fontSize: arabicSize + 'px' }}
-            >
-              {currentVerse.text}
+    <div className="min-h-screen animate-fade-in" style={{ background: 'var(--bg-primary)' }}>
+      {/* Generation overlay */}
+      {isGenerating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }}>
+          <div className="text-center p-8 rounded-2xl max-w-sm w-full mx-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+            <div className="w-16 h-16 border-4 rounded-full animate-spin mx-auto mb-4" style={{ borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }} />
+            <p className="text-lg font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
+              {genType === 'image' ? 'Creating Image...' : 'Generating Video...'}
             </p>
-
-            {/* Translation */}
-            {showTranslation && (
-              <p
-                className="text-zinc-300/80 text-center text-sm md:text-base max-w-xl leading-relaxed animate-fade-in"
-                key={'en-' + currentIndex}
-              >
-                {currentVerse.numberInSurah}. {currentVerse.translation}
-              </p>
-            )}
+            <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
+              {genType === 'video' ? 'Playing through all verses. This may take a while.' : 'Almost done...'}
+            </p>
+            <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: 'var(--bg-card)' }}>
+              <div className="h-full rounded-full transition-all duration-300" style={{ width: genProgress + '%', background: 'var(--accent)' }} />
+            </div>
+            <p className="text-sm mt-2 font-medium" style={{ color: 'var(--accent)' }}>{genProgress}%</p>
           </div>
         </div>
+      )}
 
-        {/* Player Controls */}
-        <div className="px-4 pb-6">
-          <div className="max-w-xl mx-auto">
-            {/* Progress bar */}
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-zinc-500 text-xs w-10 text-right">{formatTime(progress)}</span>
-              <input
-                type="range"
-                min={0}
-                max={duration || 1}
-                value={progress}
-                onChange={e => {
-                  const val = parseFloat(e.target.value);
-                  if (audioRef.current) {
-                    audioRef.current.currentTime = val;
-                    setProgress(val);
-                  }
-                }}
-                className="flex-1"
-              />
-              <span className="text-zinc-500 text-xs w-10">{formatTime(duration)}</span>
-            </div>
-
-            {/* Controls */}
-            <div className="flex items-center justify-center gap-6">
-              <button
-                onClick={() => goToVerse(currentIndex - 1)}
-                disabled={currentIndex === 0}
-                className="text-zinc-400 hover:text-white disabled:text-zinc-700 transition-colors"
-              >
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-                </svg>
-              </button>
-
-              <button
-                onClick={togglePlay}
-                className="w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-500 flex items-center justify-center text-white transition-colors shadow-lg shadow-emerald-500/25"
-              >
-                {isPlaying ? (
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <rect x="6" y="4" width="4" height="16" rx="1" />
-                    <rect x="14" y="4" width="4" height="16" rx="1" />
-                  </svg>
-                ) : (
-                  <svg className="w-6 h-6 ml-1" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                )}
-              </button>
-
-              <button
-                onClick={() => goToVerse(currentIndex + 1)}
-                disabled={currentIndex === verses.length - 1}
-                className="text-zinc-400 hover:text-white disabled:text-zinc-700 transition-colors"
-              >
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                </svg>
-              </button>
+      {/* Header */}
+      <div className="border-b" style={{ borderColor: 'var(--border)' }}>
+        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => { audioRef.current?.pause(); onBack(); }} className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:scale-110" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-primary)' }}><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </button>
+            <div>
+              <h1 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{surah.englishName}</h1>
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{verses.length} verse{verses.length > 1 ? 's' : ''} selected</p>
             </div>
           </div>
-        </div>
-
-        {/* Verse List */}
-        <div className="border-t border-zinc-800/50 px-4 py-4 max-h-48 overflow-y-auto">
-          <div className="max-w-3xl mx-auto space-y-1">
-            {verses.map((v, i) => (
-              <button
-                key={v.numberInSurah}
-                onClick={() => goToVerse(i)}
-                className={'w-full text-left px-4 py-2 rounded-lg text-sm transition-all flex items-center gap-3 ' +
-                  (i === currentIndex
-                    ? 'bg-emerald-500/15 text-emerald-400 verse-playing'
-                    : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300')}
-              >
-                <span className="w-6 text-right text-xs opacity-60">{v.numberInSurah}</span>
-                <span className="font-arabic text-base truncate flex-1" dir="rtl">{v.text}</span>
-                {i === currentIndex && isPlaying && (
-                  <div className="flex gap-0.5 items-end h-4">
-                    <div className="w-0.5 bg-emerald-400 animate-pulse" style={{height: '40%'}} />
-                    <div className="w-0.5 bg-emerald-400 animate-pulse" style={{height: '70%', animationDelay: '0.15s'}} />
-                    <div className="w-0.5 bg-emerald-400 animate-pulse" style={{height: '50%', animationDelay: '0.3s'}} />
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
+          <button onClick={() => setShowSettings(!showSettings)} className="w-9 h-9 rounded-lg flex items-center justify-center lg:hidden transition-all hover:scale-110" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-primary)' }}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          </button>
         </div>
       </div>
 
-      {/* Sidebar */}
-      <div className={'fixed lg:static inset-0 z-30 lg:z-auto transition-transform duration-300 ' +
-        (sidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0')}>
-        {/* Overlay for mobile */}
-        {sidebarOpen && (
-          <div className="absolute inset-0 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />
-        )}
-        <div className="absolute right-0 top-0 bottom-0 w-80 lg:w-72 lg:relative bg-[#111] border-l border-zinc-800/50 overflow-y-auto">
-          <div className="p-5 space-y-6">
-            {/* Close on mobile */}
-            <div className="flex items-center justify-between lg:hidden">
-              <h3 className="text-white font-semibold">Settings</h3>
-              <button onClick={() => setSidebarOpen(false)} className="text-zinc-400 hover:text-white">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+      <div className="flex flex-col lg:flex-row" style={{ height: 'calc(100vh - 56px)' }}>
+        {/* Settings Sidebar */}
+        <div className={
+          'border-r overflow-y-auto transition-all ' +
+          (showSettings ? 'fixed inset-0 z-40 lg:relative lg:inset-auto' : 'hidden lg:block')
+        } style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', width: showSettings ? '100%' : undefined, minWidth: '280px', maxWidth: showSettings ? undefined : '320px' }}>
+          {showSettings && (
+            <div className="flex justify-end p-3 lg:hidden">
+              <button onClick={() => setShowSettings(false)} className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: 'var(--bg-card)' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-primary)' }}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
-
-            <div className="hidden lg:block">
-              <h3 className="text-white font-semibold">Settings</h3>
-            </div>
-
+          )}
+          <div className="p-4 space-y-6">
             {/* Reciter */}
             <div>
-              <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">Reciter</label>
-              <select
-                value={reciter.id}
-                onChange={e => {
-                  const found = reciters.find(r => r.id === e.target.value);
-                  if (found) setReciter(found);
-                }}
-                className="w-full bg-[#1a1a1a] border border-zinc-800 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500/50"
-              >
-                {reciters.map(r => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Arabic Size */}
-            <div>
-              <label className="text-xs text-zinc-500 uppercase tracking-wider mb-2 block">
-                Arabic Size - {arabicSize}px
-              </label>
-              <input
-                type="range"
-                min={20}
-                max={64}
-                value={arabicSize}
-                onChange={e => setArabicSize(Number(e.target.value))}
-                className="w-full"
-              />
-            </div>
-
-            {/* Translation Toggle */}
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-zinc-500 uppercase tracking-wider">Translation</label>
-              <button
-                onClick={() => setShowTranslation(!showTranslation)}
-                className={'w-11 h-6 rounded-full transition-colors relative ' +
-                  (showTranslation ? 'bg-emerald-600' : 'bg-zinc-700')}
-              >
-                <div className={'w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ' +
-                  (showTranslation ? 'translate-x-[22px]' : 'translate-x-0.5')} />
-              </button>
-            </div>
-
-            {/* Background */}
-            <div>
-              <label className="text-xs text-zinc-500 uppercase tracking-wider mb-3 block">Background</label>
-              <div className="grid grid-cols-3 gap-2">
-                {backgrounds.map((b, i) => (
-                  <button
-                    key={b.id}
-                    onClick={() => setBgIndex(i)}
-                    className={'h-12 rounded-lg border-2 transition-all ' +
-                      (i === bgIndex ? 'border-emerald-500 scale-105' : 'border-transparent hover:border-zinc-600')}
-                    style={{
-                      background: 'linear-gradient(135deg, ' + b.from + ' 0%, ' + b.to + ' 100%)',
-                    }}
-                    title={b.name}
-                  />
+              <label className="text-xs font-semibold uppercase tracking-wider mb-3 block" style={{ color: 'var(--text-secondary)' }}>Reciter</label>
+              <div className="space-y-1">
+                {reciters.map((r, i) => (
+                  <button key={r.id} onClick={() => { setReciterIdx(i); if (isPlaying) { audioRef.current?.pause(); setIsPlaying(false); } }} className="w-full text-left p-3 rounded-xl transition-all text-sm" style={{ background: i === reciterIdx ? 'var(--accent-light)' : 'transparent', color: i === reciterIdx ? 'var(--accent)' : 'var(--text-primary)' }}>
+                    <div className="font-medium">{r.name}</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{r.arabicName}</div>
+                  </button>
                 ))}
               </div>
             </div>
+            {/* Background */}
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider mb-3 block" style={{ color: 'var(--text-secondary)' }}>Background</label>
+              <div className="grid grid-cols-5 gap-2">
+                {backgrounds.map((b, i) => (
+                  <button key={b.id} onClick={() => setBgIdx(i)} className="aspect-square rounded-lg transition-all hover:scale-110" style={{ background: getGradientCSS(b), outline: i === bgIdx ? '2px solid var(--accent)' : '2px solid transparent', outlineOffset: '2px' }} title={b.name} />
+                ))}
+              </div>
+            </div>
+            {/* Translation toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Show Translation</span>
+              <button onClick={() => setShowTranslation(!showTranslation)} className="w-12 h-7 rounded-full transition-all relative" style={{ background: showTranslation ? 'var(--accent)' : 'var(--bg-card)' }}>
+                <div className="w-5 h-5 rounded-full bg-white absolute top-1 transition-all" style={{ left: showTranslation ? '26px' : '4px' }} />
+              </button>
+            </div>
+            {/* Download buttons */}
+            <div className="space-y-2 pt-2">
+              <button onClick={downloadImage} disabled={isGenerating} className="w-full py-3 rounded-xl font-medium text-sm transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 text-white" style={{ background: 'var(--accent)' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                Download Image
+              </button>
+              <button onClick={downloadVideo} disabled={isGenerating} className="w-full py-3 rounded-xl font-medium text-sm transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                Download Video
+              </button>
+            </div>
+          </div>
+        </div>
 
-            {/* Surah Info */}
-            <div className="pt-4 border-t border-zinc-800/50">
-              <p className="text-zinc-500 text-xs uppercase tracking-wider mb-2">Playing</p>
-              <p className="text-white font-semibold">{surah.englishName}</p>
-              <p className="text-zinc-400 font-arabic text-lg">{surah.name}</p>
-              <p className="text-zinc-500 text-sm mt-1">
-                Verse {currentIndex + 1} of {verses.length}
-              </p>
+        {/* Main preview area */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Preview */}
+          <div className="flex-1 flex items-center justify-center p-4 sm:p-8 overflow-y-auto">
+            <div className="w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: '9/16' }}>
+              <div className="w-full h-full flex flex-col items-center justify-center p-8 sm:p-12 relative" style={{ background: getGradientCSS(bg) }}>
+                {/* Overlay */}
+                <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.3)' }} />
+                {/* Decorative border */}
+                <div className="absolute inset-4 sm:inset-6 border border-white/10 rounded-xl" />
+                {/* Content */}
+                <div className="relative z-10 text-center w-full">
+                  <p className="text-white/50 text-xs sm:text-sm font-medium mb-6 tracking-widest uppercase">{surah.englishName} - Verse {currentVerse?.numberInSurah}</p>
+                  <p className="text-white text-2xl sm:text-3xl lg:text-4xl leading-relaxed mb-6" style={{ fontFamily: 'Amiri, serif', direction: 'rtl' }}>
+                    {currentVerse?.text}
+                  </p>
+                  {showTranslation && currentVerse?.translation && (
+                    <p className="text-white/70 text-sm sm:text-base leading-relaxed max-w-md mx-auto italic">
+                      {currentVerse.translation}
+                    </p>
+                  )}
+                </div>
+                {/* Watermark */}
+                <p className="absolute bottom-4 text-white/25 text-xs tracking-wider">Quran SM Download</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Verse list */}
+          <div className="border-t" style={{ borderColor: 'var(--border)' }}>
+            <div className="flex overflow-x-auto gap-1 p-2 sm:p-3">
+              {verses.map((v, i) => (
+                <button
+                  key={v.numberInSurah}
+                  onClick={() => { setCurrentIndex(i); if (isPlaying) { audioRef.current?.pause(); setIsPlaying(true); } }}
+                  className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-sm font-bold transition-all hover:scale-110"
+                  style={{
+                    background: i === currentIndex ? 'var(--accent)' : 'var(--bg-card)',
+                    color: i === currentIndex ? 'white' : 'var(--text-secondary)',
+                    boxShadow: i === currentIndex ? '0 4px 20px var(--accent-light)' : 'none',
+                  }}
+                >
+                  {v.numberInSurah}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Playback controls */}
+          <div className="border-t p-4" style={{ borderColor: 'var(--border)', background: 'var(--bg-secondary)' }}>
+            <div className="flex items-center justify-center gap-4">
+              <button onClick={goPrev} disabled={currentIndex === 0} className="w-12 h-12 rounded-full flex items-center justify-center transition-all hover:scale-110 disabled:opacity-30" style={{ background: 'var(--bg-card)' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-primary)' }}><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+              </button>
+              <button onClick={togglePlay} className="w-16 h-16 rounded-full flex items-center justify-center transition-all hover:scale-110 text-white" style={{ background: 'var(--accent)', boxShadow: '0 4px 30px var(--accent-light)' }}>
+                {isPlaying ? (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                ) : (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                )}
+              </button>
+              <button onClick={goNext} disabled={currentIndex === verses.length - 1} className="w-12 h-12 rounded-full flex items-center justify-center transition-all hover:scale-110 disabled:opacity-30" style={{ background: 'var(--bg-card)' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-primary)' }}><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+              </button>
+            </div>
+            {/* Mobile download buttons */}
+            <div className="flex gap-2 mt-4 lg:hidden">
+              <button onClick={downloadImage} disabled={isGenerating} className="flex-1 py-3 rounded-xl font-medium text-sm text-white flex items-center justify-center gap-2" style={{ background: 'var(--accent)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                Image
+              </button>
+              <button onClick={downloadVideo} disabled={isGenerating} className="flex-1 py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                Video
+              </button>
             </div>
           </div>
         </div>

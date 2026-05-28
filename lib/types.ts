@@ -8,15 +8,27 @@ export interface Surah {
 }
 
 export interface Verse {
+  number: number;
   numberInSurah: number;
   text: string;
   translation: string;
+  surahNumber: number;
 }
 
 export interface Reciter {
   id: string;
   name: string;
-  subfolder: string;
+  arabicName: string;
+  style: string;
+  source: 'islamic_network' | 'everyayah';
+  identifier: string;
 }
 
-export type ViewType = 'browse' | 'select' | 'studio';
+export interface Background {
+  id: string;
+  name: string;
+  colors: string[];
+}
+
+export type Theme = 'dark' | 'light' | 'emerald';
+export type View = 'home' | 'browse' | 'verses' | 'studio' | 'feedback';
