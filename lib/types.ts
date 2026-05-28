@@ -24,11 +24,31 @@ export interface Reciter {
   identifier: string;
 }
 
-export interface Background {
+export interface GradientBackground {
   id: string;
   name: string;
+  type: 'gradient';
   colors: string[];
+}
+
+export interface PhotoBackground {
+  id: string;
+  name: string;
+  type: 'photo';
+  url: string;
+  thumb: string;
+}
+
+export type Background = GradientBackground | PhotoBackground;
+
+export interface VideoFormat {
+  id: string;
+  label: string;
+  width: number;
+  height: number;
+  ratio: string;
 }
 
 export type Theme = 'dark' | 'light' | 'emerald';
 export type View = 'home' | 'browse' | 'verses' | 'studio' | 'feedback';
+export type BgTab = 'gradients' | 'photos' | 'import';
