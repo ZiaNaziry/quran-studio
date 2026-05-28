@@ -11,8 +11,7 @@ export interface Verse {
   number: number;
   numberInSurah: number;
   text: string;
-  translation: string;
-  surahNumber: number;
+  translation?: string;
 }
 
 export interface Reciter {
@@ -23,6 +22,8 @@ export interface Reciter {
   source: 'islamic_network' | 'everyayah';
   identifier: string;
 }
+
+export type BgTab = 'gradients' | 'photos' | 'import';
 
 export interface GradientBackground {
   id: string;
@@ -35,6 +36,7 @@ export interface PhotoBackground {
   id: string;
   name: string;
   type: 'photo';
+  category: string;
   url: string;
   thumb: string;
 }
@@ -49,6 +51,5 @@ export interface VideoFormat {
   ratio: string;
 }
 
-export type Theme = 'dark' | 'light' | 'emerald';
 export type View = 'home' | 'browse' | 'verses' | 'studio' | 'feedback';
-export type BgTab = 'gradients' | 'photos' | 'import';
+export type Theme = 'dark' | 'light' | 'emerald';
