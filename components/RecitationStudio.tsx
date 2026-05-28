@@ -161,6 +161,23 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
   }
 
   // Canvas text wrapping
+  // Measure how many lines text will take (without drawing)
+  function measureTextLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): number {
+    const words = text.split(' ');
+    let line = '';
+    let lines = 1;
+    for (let i = 0; i < words.length; i++) {
+      const test = line ? line + ' ' + words[i] : words[i];
+      if (ctx.measureText(test).width > maxWidth && line) {
+        line = words[i];
+        lines++;
+      } else {
+        line = test;
+      }
+    }
+    return lines;
+  }
+
   function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number): number {
     const words = text.split(' ');
     let line = '';
@@ -179,7 +196,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     return cy;
   }
 
-  // Draw verse on canvas — NO border lines, smaller text
+  // Draw verse on canvas — centered vertically
   function drawVerseOnCanvas(ctx: CanvasRenderingContext2D, verse: Verse, w: number, h: number, bgImg?: HTMLImageElement | null) {
     // Background
     if (bgImg) {
@@ -204,32 +221,61 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     ctx.fillStyle = 'rgba(0,0,0,' + (overlayOpacity / 100) + ')';
     ctx.fillRect(0, 0, w, h);
 
-    // NO border/strokeRect — clean edges
-
     const scale = Math.min(w, h) / 1080;
 
-    // Surah name — small
+    // --- Calculate total content height to center everything ---
+    const labelSize = Math.round(16 * scale);
+    const aSize = Math.round(arabicSize * scale);
+    const aLineH = aSize * 1.6;
+    const tSize = Math.round(translationSize * scale);
+    const tLineH = tSize * 1.5;
+    const gap = 20 * scale;
+
+    // Measure Arabic lines
+    ctx.font = '600 ' + aSize + 'px serif';
+    const arabicLines = measureTextLines(ctx, verse.text, w * 0.8);
+
+    // Measure translation lines
+    let translationLines = 0;
+    if (showTranslation && verse.translation) {
+      ctx.font = '400 italic ' + tSize + 'px system-ui, sans-serif';
+      translationLines = measureTextLines(ctx, verse.translation, w * 0.75);
+    }
+
+    // Total height: label + gap + arabic block + gap + translation block
+    let totalHeight = labelSize; // surah label
+    totalHeight += gap; // gap between label and arabic
+    totalHeight += arabicLines * aLineH; // arabic text
+    if (translationLines > 0) {
+      totalHeight += gap; // gap between arabic and translation
+      totalHeight += translationLines * tLineH; // translation text
+    }
+
+    // Start Y so everything is vertically centered
+    let startY = (h - totalHeight) / 2 + labelSize;
+
+    // Surah name — small label
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.font = '500 ' + Math.round(16 * scale) + 'px system-ui, sans-serif';
+    ctx.font = '500 ' + labelSize + 'px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.direction = 'ltr';
-    ctx.fillText(surah.englishName + ' - ' + t('studio.verse', lang) + ' ' + verse.numberInSurah, w / 2, h * 0.08);
+    ctx.fillText(surah.englishName + ' - ' + t('studio.verse', lang) + ' ' + verse.numberInSurah, w / 2, startY);
 
-    // Arabic text — smaller default
+    startY += gap;
+
+    // Arabic text
     ctx.fillStyle = '#ffffff';
-    const aSize = Math.round(arabicSize * scale);
     ctx.font = '600 ' + aSize + 'px serif';
     ctx.direction = 'rtl';
     ctx.textAlign = 'center';
-    const nextY = wrapText(ctx, verse.text, w / 2, h * 0.32, w * 0.8, aSize * 1.6);
+    const nextY = wrapText(ctx, verse.text, w / 2, startY + aSize * 0.3, w * 0.8, aLineH);
 
-    // Translation — smaller
+    // Translation
     if (showTranslation && verse.translation) {
       ctx.direction = 'ltr';
       ctx.fillStyle = 'rgba(255,255,255,0.65)';
-      const tSize = Math.round(translationSize * scale);
       ctx.font = '400 italic ' + tSize + 'px system-ui, sans-serif';
-      wrapText(ctx, verse.translation, w / 2, nextY + 20 * scale, w * 0.75, tSize * 1.5);
+      wrapText(ctx, verse.translation, w / 2, nextY + gap, w * 0.75, tLineH);
     }
   }
 
