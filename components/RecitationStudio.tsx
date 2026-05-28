@@ -357,12 +357,20 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       canvasStream.getVideoTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
       audioDest.stream.getAudioTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
 
-      // Pick best supported codec
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-        ? 'video/webm;codecs=vp8,opus'
-        : MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-        ? 'video/webm;codecs=vp9,opus'
-        : 'video/webm';
+      // Pick best supported codec — prefer MP4 for phone compatibility, fall back to WebM
+      let mimeType = 'video/webm';
+      let fileExt = 'webm';
+      if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')) {
+        mimeType = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
+        fileExt = 'mp4';
+      } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        mimeType = 'video/mp4';
+        fileExt = 'mp4';
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+        mimeType = 'video/webm;codecs=vp8,opus';
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+        mimeType = 'video/webm;codecs=vp9,opus';
+      }
 
       const chunks: Blob[] = [];
       const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 2500000 });
@@ -432,7 +440,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       await stopPromise;
       await audioCtx.close();
 
-      const blob = new Blob(chunks, { type: 'video/webm' });
+      const blob = new Blob(chunks, { type: mimeType });
       if (blob.size < 1000) {
         alert('Recording produced an empty file. Please try Chrome on desktop.');
         setIsDownloading(false);
@@ -443,7 +451,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       setDownloadProgress(98);
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.download = surah.englishName.replace(/\s+/g, '-') + '-recitation.webm';
+      link.download = surah.englishName.replace(/\s+/g, '-') + '-recitation.' + fileExt;
       link.href = blobUrl;
       document.body.appendChild(link);
       link.click();
