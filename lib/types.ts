@@ -53,3 +53,4 @@ export interface VideoFormat {
 
 export type View = 'home' | 'browse' | 'verses' | 'studio' | 'feedback';
 export type Theme = 'dark' | 'light' | 'emerald';
+export type Language = 'en' | 'ar' | 'fa';

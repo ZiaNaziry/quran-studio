@@ -6,6 +6,7 @@ import VerseSelector from '../components/VerseSelector';
 import RecitationStudio from '../components/RecitationStudio';
 import FeedbackPage from '../components/FeedbackPage';
 import { Surah, Verse, View, Theme } from '../lib/types';
+import { Language, languageNames, t, isRtl } from '../lib/i18n';
 
 const themeOptions: { id: Theme; label: string }[] = [
   { id: 'dark', label: 'Dark' },
@@ -16,21 +17,29 @@ const themeOptions: { id: Theme; label: string }[] = [
 export default function Home() {
   const [view, setView] = useState<View>('home');
   const [theme, setTheme] = useState<Theme>('dark');
+  const [lang, setLang] = useState<Language>('en');
   const [selectedSurah, setSelectedSurah] = useState<Surah | null>(null);
   const [allVerses, setAllVerses] = useState<Verse[]>([]);
   const [selectedVerses, setSelectedVerses] = useState<Verse[]>([]);
   const [loading, setLoading] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('qsd-theme') as Theme | null;
     if (saved && ['dark', 'light', 'emerald'].includes(saved)) setTheme(saved);
+    const savedLang = localStorage.getItem('qsd-lang') as Language | null;
+    if (savedLang && ['en', 'ar', 'fa'].includes(savedLang)) setLang(savedLang);
   }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('qsd-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('qsd-lang', lang);
+  }, [lang]);
 
   const handleSurahSelect = useCallback(async (surah: Surah) => {
     setSelectedSurah(surah);
@@ -61,6 +70,15 @@ export default function Home() {
     setView('studio');
   }, []);
 
+  const dir = isRtl(lang) ? 'rtl' : 'ltr';
+
+  const features = [
+    { title: t('home.feat1.title', lang), desc: t('home.feat1.desc', lang), icon: 'M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8' },
+    { title: t('home.feat2.title', lang), desc: t('home.feat2.desc', lang), icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
+    { title: t('home.feat3.title', lang), desc: t('home.feat3.desc', lang), icon: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4' },
+    { title: t('home.feat4.title', lang), desc: t('home.feat4.desc', lang), icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
+  ];
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
       {/* Navbar */}
@@ -75,19 +93,38 @@ export default function Home() {
           <div className="flex items-center gap-2">
             {view !== 'home' && view !== 'feedback' && (
               <button onClick={() => setView('feedback')} className="px-3 py-2 rounded-lg text-sm font-medium transition-all hover:scale-105" style={{ color: 'var(--text-secondary)' }}>
-                Feedback
+                {t('nav.feedback', lang)}
               </button>
             )}
+
+            {/* Language switcher */}
             <div className="relative">
-              <button onClick={() => setThemeOpen(!themeOpen)} className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:scale-110" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+              <button onClick={() => { setLangOpen(!langOpen); setThemeOpen(false); }} className="h-9 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all hover:scale-105 text-xs font-semibold" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+                {languageNames[lang]}
+              </button>
+              {langOpen && (
+                <div className="absolute right-0 mt-2 py-2 w-36 rounded-xl shadow-2xl border animate-scale-in" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}>
+                  {(['en', 'ar', 'fa'] as Language[]).map(l => (
+                    <button key={l} onClick={() => { setLang(l); setLangOpen(false); }} className="w-full px-4 py-2 text-left text-sm font-medium transition-colors" style={{ color: lang === l ? 'var(--accent)' : 'var(--text-primary)', background: lang === l ? 'var(--accent-light)' : 'transparent' }}>
+                      {languageNames[l]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Theme switcher */}
+            <div className="relative">
+              <button onClick={() => { setThemeOpen(!themeOpen); setLangOpen(false); }} className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:scale-110" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-secondary)' }}><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
               </button>
               {themeOpen && (
                 <div className="absolute right-0 mt-2 py-2 w-36 rounded-xl shadow-2xl border animate-scale-in" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}>
-                  {themeOptions.map(t => (
-                    <button key={t.id} onClick={() => { setTheme(t.id); setThemeOpen(false); }} className="w-full px-4 py-2 text-left text-sm font-medium transition-colors flex items-center gap-2" style={{ color: theme === t.id ? 'var(--accent)' : 'var(--text-primary)', background: theme === t.id ? 'var(--accent-light)' : 'transparent' }}>
-                      <span className="w-3 h-3 rounded-full" style={{ background: t.id === 'dark' ? '#6366f1' : t.id === 'light' ? '#4f46e5' : '#10b981' }} />
-                      {t.label}
+                  {themeOptions.map(opt => (
+                    <button key={opt.id} onClick={() => { setTheme(opt.id); setThemeOpen(false); }} className="w-full px-4 py-2 text-left text-sm font-medium transition-colors flex items-center gap-2" style={{ color: theme === opt.id ? 'var(--accent)' : 'var(--text-primary)', background: theme === opt.id ? 'var(--accent-light)' : 'transparent' }}>
+                      <span className="w-3 h-3 rounded-full" style={{ background: opt.id === 'dark' ? '#6366f1' : opt.id === 'light' ? '#4f46e5' : '#10b981' }} />
+                      {opt.label}
                     </button>
                   ))}
                 </div>
@@ -109,35 +146,30 @@ export default function Home() {
 
       {/* Views */}
       {view === 'home' && (
-        <div className="animate-fade-in">
+        <div className="animate-fade-in" dir={dir}>
           {/* Hero */}
           <div className="relative overflow-hidden">
             <div className="absolute inset-0 opacity-30" style={{ background: 'radial-gradient(ellipse at 50% 0%, var(--accent), transparent 70%)' }} />
             <div className="max-w-4xl mx-auto px-4 pt-20 pb-16 text-center relative">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium mb-8 animate-slide-down" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                Beautiful Quran Videos for Social Media
+                {t('home.badge', lang)}
               </div>
               <h1 className="text-5xl sm:text-7xl font-extrabold mb-6 leading-tight animate-fade-in-up" style={{ color: 'var(--text-primary)' }}>
-                Quran SM<br /><span style={{ color: 'var(--accent)' }}>Download</span>
+                {t('home.title1', lang)}<br /><span style={{ color: 'var(--accent)' }}>{t('home.title2', lang)}</span>
               </h1>
               <p className="text-xl sm:text-2xl mb-10 max-w-2xl mx-auto anim-delay-1 animate-fade-in-up" style={{ color: 'var(--text-secondary)' }}>
-                Create stunning Quran recitation videos with beautiful backgrounds. Download and share on any social media platform.
+                {t('home.subtitle', lang)}
               </p>
               <button onClick={() => setView('browse')} className="hero-cta-btn px-10 py-4 rounded-2xl text-lg font-bold text-white transition-all hover:scale-105 active:scale-95" style={{ background: 'var(--accent)' }}>
-                Start Creating
+                {t('home.cta', lang)}
               </button>
             </div>
           </div>
           {/* Features */}
           <div className="max-w-5xl mx-auto px-4 pb-20">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {[
-                { title: '10 Reciters', desc: 'World-renowned Quran reciters including Alafasy, Sudais, and more', icon: 'M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8' },
-                { title: 'Stunning Backgrounds', desc: 'Gradients, HD photos, or import your own image', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
-                { title: 'Social Media Ready', desc: 'Download as video or image in portrait or landscape format', icon: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4' },
-                { title: 'All 114 Surahs', desc: 'Access the complete Holy Quran with translations', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
-              ].map((f, i) => (
+              {features.map((f, i) => (
                 <div key={i} className={'p-6 rounded-2xl border transition-all hover:translate-y-[-4px] hover:shadow-xl animate-fade-in-up anim-delay-' + (i + 1)} style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ background: 'var(--accent-light)' }}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent)' }}><path d={f.icon}/></svg>
@@ -150,15 +182,15 @@ export default function Home() {
           </div>
           {/* Footer */}
           <footer className="border-t py-8 text-center" style={{ borderColor: 'var(--border)' }}>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Built by Ahmad Zia Naziry</p>
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('home.footer', lang)}</p>
           </footer>
         </div>
       )}
 
-      {view === 'browse' && <SurahBrowser onSelect={handleSurahSelect} onBack={() => setView('home')} />}
-      {view === 'verses' && selectedSurah && <VerseSelector surah={selectedSurah} verses={allVerses} onSelect={handleVersesSelected} onBack={() => setView('browse')} />}
-      {view === 'studio' && selectedSurah && <RecitationStudio surah={selectedSurah} verses={selectedVerses} onBack={() => setView('verses')} />}
-      {view === 'feedback' && <FeedbackPage onBack={() => setView('home')} />}
+      {view === 'browse' && <SurahBrowser onSelect={handleSurahSelect} onBack={() => setView('home')} lang={lang} />}
+      {view === 'verses' && selectedSurah && <VerseSelector surah={selectedSurah} verses={allVerses} onSelect={handleVersesSelected} onBack={() => setView('browse')} lang={lang} />}
+      {view === 'studio' && selectedSurah && <RecitationStudio surah={selectedSurah} verses={selectedVerses} onBack={() => setView('verses')} lang={lang} />}
+      {view === 'feedback' && <FeedbackPage onBack={() => setView('home')} lang={lang} />}
     </div>
   );
 }
