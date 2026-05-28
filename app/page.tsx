@@ -121,10 +121,10 @@ export default function Home() {
               <h1 className="text-5xl sm:text-7xl font-extrabold mb-6 leading-tight animate-fade-in-up" style={{ color: 'var(--text-primary)' }}>
                 Quran SM<br /><span style={{ color: 'var(--accent)' }}>Download</span>
               </h1>
-              <p className="text-xl sm:text-2xl mb-10 max-w-2xl mx-auto animate-fade-in-up" style={{ color: 'var(--text-secondary)', animationDelay: '0.15s', opacity: 0 }}>
+              <p className="text-xl sm:text-2xl mb-10 max-w-2xl mx-auto anim-delay-1 animate-fade-in-up" style={{ color: 'var(--text-secondary)' }}>
                 Create stunning Quran recitation videos with beautiful backgrounds. Download and share on any social media platform.
               </p>
-              <button onClick={() => setView('browse')} className="px-10 py-4 rounded-2xl text-lg font-bold text-white transition-all hover:scale-105 active:scale-95 animate-fade-in-up animate-pulse-glow" style={{ background: 'var(--accent)', animationDelay: '0.3s', opacity: 0 }}>
+              <button onClick={() => setView('browse')} className="hero-cta-btn px-10 py-4 rounded-2xl text-lg font-bold text-white transition-all hover:scale-105 active:scale-95" style={{ background: 'var(--accent)' }}>
                 Start Creating
               </button>
             </div>
@@ -138,7 +138,7 @@ export default function Home() {
                 { title: 'Social Media Ready', desc: 'Download as video or image in portrait or landscape format', icon: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4' },
                 { title: 'All 114 Surahs', desc: 'Access the complete Holy Quran with translations', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
               ].map((f, i) => (
-                <div key={i} className="p-6 rounded-2xl border transition-all hover:translate-y-[-4px] hover:shadow-xl animate-fade-in-up" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', animationDelay: (0.1 + i * 0.1) + 's', opacity: 0 }}>
+                <div key={i} className={'p-6 rounded-2xl border transition-all hover:translate-y-[-4px] hover:shadow-xl animate-fade-in-up anim-delay-' + (i + 1)} style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ background: 'var(--accent-light)' }}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent)' }}><path d={f.icon}/></svg>
                   </div>

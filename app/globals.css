@@ -82,9 +82,29 @@ body {
   from { opacity: 0; transform: translateY(-12px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.animate-fade-in { animation: fadeIn 0.5s ease forwards; }
-.animate-fade-in-up { animation: fadeInUp 0.6s ease forwards; }
-.animate-scale-in { animation: scaleIn 0.3s ease forwards; }
-.animate-slide-down { animation: slideDown 0.5s ease forwards; }
+.animate-fade-in { animation: fadeIn 0.5s ease both; }
+.animate-fade-in-up { animation: fadeInUp 0.6s ease both; }
+.animate-scale-in { animation: scaleIn 0.3s ease both; }
+.animate-slide-down { animation: slideDown 0.5s ease both; }
 .animate-pulse-glow { animation: pulseGlow 3s ease-in-out infinite; }
 .animate-float { animation: float 4s ease-in-out infinite; }
+
+/* Animation delays */
+.anim-delay-1 { animation-delay: 0.1s; }
+.anim-delay-2 { animation-delay: 0.2s; }
+.anim-delay-3 { animation-delay: 0.3s; }
+.anim-delay-4 { animation-delay: 0.4s; }
+
+/* Elements with delay start hidden, animation reveals them */
+.animate-fade-in-up.anim-delay-1,
+.animate-fade-in-up.anim-delay-2,
+.animate-fade-in-up.anim-delay-3,
+.animate-fade-in-up.anim-delay-4 {
+  opacity: 0;
+  animation-fill-mode: forwards;
+}
+
+/* Hero CTA button - pulse glow after appearing */
+.hero-cta-btn {
+  animation: fadeInUp 0.6s ease 0.3s both, pulseGlow 3s ease-in-out 0.9s infinite;
+}
