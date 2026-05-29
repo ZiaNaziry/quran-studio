@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import SurahBrowser from '../components/SurahBrowser';
 import VerseSelector from '../components/VerseSelector';
 import RecitationStudio from '../components/RecitationStudio';
@@ -8,10 +8,10 @@ import FeedbackPage from '../components/FeedbackPage';
 import { Surah, Verse, View, Theme } from '../lib/types';
 import { Language, languageNames, t, isRtl } from '../lib/i18n';
 
-const themeOptions: { id: Theme; label: string }[] = [
-  { id: 'dark', label: 'Dark' },
-  { id: 'light', label: 'Light' },
-  { id: 'emerald', label: 'Emerald' },
+const themeOptions: { id: Theme; label: string; color: string }[] = [
+  { id: 'light', label: 'Light', color: '#4f46e5' },
+  { id: 'dark', label: 'Dark', color: '#6366f1' },
+  { id: 'emerald', label: 'Emerald', color: '#10b981' },
 ];
 
 export default function Home() {
@@ -24,6 +24,9 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
+  const particlesRef = useRef<HTMLCanvasElement>(null);
+  const langRef = useRef<HTMLDivElement>(null);
+  const themeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('qsd-theme') as Theme | null;
@@ -40,6 +43,71 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem('qsd-lang', lang);
   }, [lang]);
+
+  // Close dropdowns on outside click
+  useEffect(function () {
+    function handleClick(e: MouseEvent) {
+      if (langRef.current && !langRef.current.contains(e.target as Node)) {
+        setLangOpen(false);
+      }
+      if (themeRef.current && !themeRef.current.contains(e.target as Node)) {
+        setThemeOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return function () { document.removeEventListener("mousedown", handleClick); };
+  }, []);
+
+  // Floating particles animation (same as Portal)
+  useEffect(function () {
+    const canvas = particlesRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    let animId = 0;
+    const particles: { x: number; y: number; vx: number; vy: number; r: number; o: number }[] = [];
+    function resize() {
+      if (!canvas) return;
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener("resize", resize);
+    for (let i = 0; i < 40; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        r: Math.random() * 2.5 + 1,
+        o: Math.random() * 0.3 + 0.05,
+      });
+    }
+    function draw() {
+      if (!ctx || !canvas) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#6366f1";
+      for (let j = 0; j < particles.length; j++) {
+        const p = particles[j];
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0) p.x = canvas.width;
+        if (p.x > canvas.width) p.x = 0;
+        if (p.y < 0) p.y = canvas.height;
+        if (p.y > canvas.height) p.y = 0;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = accent + Math.round(p.o * 255).toString(16).padStart(2, "0");
+        ctx.fill();
+      }
+      animId = requestAnimationFrame(draw);
+    }
+    draw();
+    return function () {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", resize);
+    };
+  }, [theme]);
 
   const handleSurahSelect = useCallback(async (surah: Surah) => {
     setSelectedSurah(surah);
@@ -81,6 +149,13 @@ export default function Home() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-primary)' }}>
+      {/* Floating particles canvas */}
+      <canvas ref={particlesRef} className="fixed inset-0 pointer-events-none z-0" style={{ opacity: 0.6 }} />
+      {/* Floating orbs */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 rounded-full blur-3xl" style={{ background: 'var(--accent-light)', animation: 'float 20s ease-in-out infinite' }} />
+        <div className="absolute bottom-1/3 right-1/4 w-80 h-80 rounded-full blur-3xl" style={{ background: 'var(--accent-light)', animation: 'float 25s ease-in-out infinite reverse' }} />
+      </div>
       {/* Navbar */}
       <nav className="sticky top-0 z-50 border-b" style={{ background: 'var(--glass)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderColor: 'var(--border)' }}>
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -98,7 +173,7 @@ export default function Home() {
             )}
 
             {/* Language switcher */}
-            <div className="relative">
+            <div className="relative" ref={langRef}>
               <button onClick={() => { setLangOpen(!langOpen); setThemeOpen(false); }} className="h-9 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all hover:scale-105 text-xs font-semibold" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
                 {languageNames[lang]}
@@ -115,15 +190,15 @@ export default function Home() {
             </div>
 
             {/* Theme switcher */}
-            <div className="relative">
+            <div className="relative" ref={themeRef}>
               <button onClick={() => { setThemeOpen(!themeOpen); setLangOpen(false); }} className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:scale-110" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-secondary)' }}><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
               </button>
               {themeOpen && (
                 <div className="absolute right-0 mt-2 py-2 w-36 rounded-xl shadow-2xl border animate-scale-in" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}>
                   {themeOptions.map(opt => (
-                    <button key={opt.id} onClick={() => { setTheme(opt.id); setThemeOpen(false); }} className="w-full px-4 py-2 text-left text-sm font-medium transition-colors flex items-center gap-2" style={{ color: theme === opt.id ? 'var(--accent)' : 'var(--text-primary)', background: theme === opt.id ? 'var(--accent-light)' : 'transparent' }}>
-                      <span className="w-3 h-3 rounded-full" style={{ background: opt.id === 'dark' ? '#6366f1' : opt.id === 'light' ? '#4f46e5' : '#10b981' }} />
+                    <button key={opt.id} onClick={() => { setTheme(opt.id); setThemeOpen(false); }} className="w-full px-4 py-2.5 text-left text-sm font-medium transition-colors flex items-center gap-2.5" style={{ color: theme === opt.id ? 'var(--accent)' : 'var(--text-primary)', background: theme === opt.id ? 'var(--accent-light)' : 'transparent' }}>
+                      <span className="w-3 h-3 rounded-full" style={{ background: opt.color }} />
                       {opt.label}
                     </button>
                   ))}
@@ -146,7 +221,7 @@ export default function Home() {
 
       {/* Views */}
       {view === 'home' && (
-        <div className="animate-fade-in" dir={dir}>
+        <div className="animate-fade-in relative z-10" dir={dir}>
           {/* Hero */}
           <div className="relative overflow-hidden">
             <div className="absolute inset-0 opacity-30" style={{ background: 'radial-gradient(ellipse at 50% 0%, var(--accent), transparent 70%)' }} />
@@ -200,10 +275,12 @@ export default function Home() {
         </div>
       )}
 
-      {view === 'browse' && <SurahBrowser onSelect={handleSurahSelect} onBack={() => setView('home')} lang={lang} />}
-      {view === 'verses' && selectedSurah && <VerseSelector surah={selectedSurah} verses={allVerses} onSelect={handleVersesSelected} onBack={() => setView('browse')} lang={lang} />}
-      {view === 'studio' && selectedSurah && <RecitationStudio surah={selectedSurah} verses={selectedVerses} onBack={() => setView('verses')} lang={lang} />}
-      {view === 'feedback' && <FeedbackPage onBack={() => setView('home')} lang={lang} />}
+      <div className="relative z-10">
+        {view === 'browse' && <SurahBrowser onSelect={handleSurahSelect} onBack={() => setView('home')} lang={lang} />}
+        {view === 'verses' && selectedSurah && <VerseSelector surah={selectedSurah} verses={allVerses} onSelect={handleVersesSelected} onBack={() => setView('browse')} lang={lang} />}
+        {view === 'studio' && selectedSurah && <RecitationStudio surah={selectedSurah} verses={selectedVerses} onBack={() => setView('verses')} lang={lang} />}
+        {view === 'feedback' && <FeedbackPage onBack={() => setView('home')} lang={lang} />}
+      </div>
     </div>
   );
 }

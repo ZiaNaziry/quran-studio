@@ -352,8 +352,10 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       const audioCtx = new AudioCtxClass();
       const audioDest = audioCtx.createMediaStreamDestination();
 
-      // Combine canvas video + audio tracks
-      const canvasStream = canvas.captureStream(30);
+      // Combine canvas video + audio tracks — use captureStream(0) for manual frame control
+      // This prevents frame drops and freezing on PC by explicitly requesting each frame
+      const canvasStream = (canvas as any).captureStream(0) as MediaStream;
+      const videoTrack = canvasStream.getVideoTracks()[0] as any;
       const combinedStream = new MediaStream();
       canvasStream.getVideoTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
       audioDest.stream.getAudioTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
@@ -392,10 +394,12 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       const recordingStartTime = Date.now();
       recorder.start(200);
 
-      // Continuous canvas redraw with setInterval (more reliable than rAF)
+      // Continuous canvas redraw at ~30fps with manual frame requests
+      // Using captureStream(0) + requestFrame() ensures every frame is captured consistently
       let drawVerse = verses[0];
       const frameTimer = setInterval(function() {
         drawVerseOnCanvas(ctx, drawVerse, format.width, format.height, bgImg);
+        try { if (videoTrack && videoTrack.requestFrame) videoTrack.requestFrame(); } catch (_e) { /* ignore */ }
       }, 33);
 
       // Let recorder warm up
