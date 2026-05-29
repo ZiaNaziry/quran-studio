@@ -681,8 +681,22 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
               )}
             </div>
 
+            {/* Download instructions */}
+            <details className="pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+              <summary className="cursor-pointer text-xs font-semibold flex items-center gap-1.5 select-none" style={{ color: 'var(--accent)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                {t('studio.downloadTip.title', lang)}
+              </summary>
+              <ol className="mt-2 space-y-1 text-xs pl-4" style={{ color: 'var(--text-secondary)', listStyleType: 'decimal' }}>
+                <li>{t('studio.downloadTip.step1', lang)}</li>
+                <li>{t('studio.downloadTip.step2', lang)}</li>
+                <li>{t('studio.downloadTip.step3', lang)}</li>
+                <li>{t('studio.downloadTip.step4', lang)}</li>
+              </ol>
+            </details>
+
             {/* Download buttons */}
-            <div className="space-y-2 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+            <div className="space-y-2 pt-2">
               <button onClick={downloadImage} disabled={isDownloading} className="w-full py-3 rounded-xl font-medium text-sm transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 text-white disabled:opacity-50" style={{ background: 'var(--accent)' }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                 {t('studio.downloadImage', lang)} ({format.label})

@@ -11,6 +11,12 @@ const translations: Record<string, Record<Language, string>> = {
   'nav.feedback': { en: 'Feedback', ar: 'ملاحظات', fa: 'بازخورد' },
 
   // Home
+  'studio.downloadTip.title': { en: 'How to Save on iPhone', ar: 'كيفية الحفظ على الآيفون', fa: 'نحوه ذخیره در آیفون' },
+  'studio.downloadTip.step1': { en: 'Open this page in Safari', ar: 'افتح هذه الصفحة في Safari', fa: 'این صفحه را در Safari باز کنید' },
+  'studio.downloadTip.step2': { en: 'Tap the download button below', ar: 'اضغط على زر التحميل أدناه', fa: 'دکمه دانلود زیر را بزنید' },
+  'studio.downloadTip.step3': { en: 'Pull down the page to refresh', ar: 'اسحب الصفحة للأسفل للتحديث', fa: 'صفحه را به پایین بکشید تا بروزرسانی شود' },
+  'studio.downloadTip.step4': { en: 'Tap the download icon and save to your gallery', ar: 'اضغط على أيقونة التحميل واحفظ في معرض الصور', fa: 'روی آیکون دانلود بزنید و در گالری ذخیره کنید' },
+
   'home.badge': { en: 'Beautiful Quran Videos for Social Media', ar: 'فيديوهات قرآنية جميلة لوسائل التواصل', fa: 'ویدیوهای زیبای قرآنی برای شبکه‌های اجتماعی' },
   'home.title1': { en: 'Quran SM', ar: 'Quran SM', fa: 'Quran SM' },
   'home.title2': { en: 'Download', ar: 'Download', fa: 'Download' },
