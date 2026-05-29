@@ -352,10 +352,9 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       const audioCtx = new AudioCtxClass();
       const audioDest = audioCtx.createMediaStreamDestination();
 
-      // Combine canvas video + audio tracks — use captureStream(0) for manual frame control
-      // This prevents frame drops and freezing on PC by explicitly requesting each frame
-      const canvasStream = (canvas as any).captureStream(0) as MediaStream;
-      const videoTrack = canvasStream.getVideoTracks()[0] as any;
+      // Combine canvas video + audio tracks — captureStream(30) lets the browser
+      // handle frame timing automatically, keeping video in perfect sync with audio
+      const canvasStream = (canvas as any).captureStream(30) as MediaStream;
       const combinedStream = new MediaStream();
       canvasStream.getVideoTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
       audioDest.stream.getAudioTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
@@ -394,13 +393,16 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       const recordingStartTime = Date.now();
       recorder.start(200);
 
-      // Continuous canvas redraw at ~30fps with manual frame requests
-      // Using captureStream(0) + requestFrame() ensures every frame is captured consistently
+      // Continuous canvas redraw using requestAnimationFrame for smooth, browser-synced frames
+      // captureStream(30) auto-captures at 30fps — we just need to keep the canvas updated
       let drawVerse = verses[0];
-      const frameTimer = setInterval(function() {
+      let frameRunning = true;
+      const redrawLoop = function() {
+        if (!frameRunning) return;
         drawVerseOnCanvas(ctx, drawVerse, format.width, format.height, bgImg);
-        try { if (videoTrack && videoTrack.requestFrame) videoTrack.requestFrame(); } catch (_e) { /* ignore */ }
-      }, 33);
+        requestAnimationFrame(redrawLoop);
+      };
+      requestAnimationFrame(redrawLoop);
 
       // Let recorder warm up
       await new Promise(function(r) { setTimeout(r, 300); });
@@ -445,7 +447,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         await new Promise(function(r) { setTimeout(r, 300); });
       }
 
-      clearInterval(frameTimer);
+      frameRunning = false;
       setDownloadProgress(92);
       recorder.stop();
       await stopPromise;
