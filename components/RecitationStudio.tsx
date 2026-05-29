@@ -358,10 +358,16 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       canvasStream.getVideoTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
       audioDest.stream.getAudioTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
 
-      // Pick best supported codec — prefer WebM (seekable via fix-webm-duration), fall back to MP4 for Safari
+      // Pick best supported codec — MP4 first for universal playback + seekability, WebM fallback
       let mimeType = 'video/webm';
       let fileExt = 'webm';
-      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+      if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')) {
+        mimeType = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
+        fileExt = 'mp4';
+      } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        mimeType = 'video/mp4';
+        fileExt = 'mp4';
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
         mimeType = 'video/webm;codecs=vp8,opus';
         fileExt = 'webm';
       } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
@@ -370,12 +376,6 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       } else if (MediaRecorder.isTypeSupported('video/webm')) {
         mimeType = 'video/webm';
         fileExt = 'webm';
-      } else if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')) {
-        mimeType = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
-        fileExt = 'mp4';
-      } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-        mimeType = 'video/mp4';
-        fileExt = 'mp4';
       }
 
       const chunks: Blob[] = [];
@@ -455,26 +455,35 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         return;
       }
 
-      // Fix WebM duration metadata so video is seekable on PC
+      // Fix duration metadata for seekability
       const recordingDuration = Date.now() - recordingStartTime;
       let blob = rawBlob;
       if (fileExt === 'webm') {
+        // Fix WebM duration metadata so video is seekable
         try {
           blob = await fixWebmDuration(rawBlob, recordingDuration, { logger: false });
         } catch {
-          blob = rawBlob; // fallback to unfixed blob
+          blob = rawBlob;
         }
       }
 
       setDownloadProgress(98);
+
+      // Download the video file
+      const downloadName = surah.englishName.replace(/\s+/g, '-') + '-recitation.' + fileExt;
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.download = surah.englishName.replace(/\s+/g, '-') + '-recitation.' + fileExt;
+      link.download = downloadName;
       link.href = blobUrl;
+      link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 1000);
+
+      // Clean up after a delay to ensure download starts
+      setTimeout(function() {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }, 3000);
       setDownloadProgress(100);
     } catch (err) {
       alert('Video recording failed: ' + (err instanceof Error ? err.message : 'Unknown error') + '. Please use Chrome on desktop.');
