@@ -5,6 +5,7 @@ import { Surah, Verse, Background, GradientBackground, PhotoBackground, BgTab, V
 import { reciters, getAudioUrl } from '../lib/reciters';
 import { gradients, photos, photoCategories, PhotoCategory, videoFormats, getGradientCSS } from '../lib/backgrounds';
 import { Language, t } from '../lib/i18n';
+import fixWebmDuration from 'fix-webm-duration';
 
 interface Props {
   surah: Surah;
@@ -383,6 +384,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         recorder.onstop = function() { resolve(); };
       });
 
+      const recordingStartTime = Date.now();
       recorder.start(200);
 
       // Continuous canvas redraw with setInterval (more reliable than rAF)
@@ -440,12 +442,23 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       await stopPromise;
       await audioCtx.close();
 
-      const blob = new Blob(chunks, { type: mimeType });
-      if (blob.size < 1000) {
+      const rawBlob = new Blob(chunks, { type: mimeType });
+      if (rawBlob.size < 1000) {
         alert('Recording produced an empty file. Please try Chrome on desktop.');
         setIsDownloading(false);
         setDownloadType('');
         return;
+      }
+
+      // Fix WebM duration metadata so video is seekable on PC
+      const recordingDuration = Date.now() - recordingStartTime;
+      let blob = rawBlob;
+      if (fileExt === 'webm') {
+        try {
+          blob = await fixWebmDuration(rawBlob, recordingDuration, { logger: false });
+        } catch {
+          blob = rawBlob; // fallback to unfixed blob
+        }
       }
 
       setDownloadProgress(98);
@@ -515,7 +528,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
       <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-56px)]">
         {/* Sidebar — visible always, scrolls below preview on mobile, side panel on desktop */}
-        <div className="order-2 lg:order-1 overflow-y-auto border-t lg:border-t-0 lg:border-r" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', minWidth: '300px' }} dir="ltr">
+        <div className="order-2 lg:order-1 overflow-y-auto border-t lg:border-t-0 lg:border-r flex-shrink-0" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', width: '320px', maxWidth: '100%' }} dir="ltr">
           <div className="p-4 space-y-5">
             {/* Format */}
             <div>
