@@ -28,6 +28,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadType, setDownloadType] = useState('');
+  const [isDesktop, setIsDesktop] = useState(false);
   const [formatIdx, setFormatIdx] = useState(1);
   const [arabicSize, setArabicSize] = useState(48);
   const [translationSize, setTranslationSize] = useState(22);
@@ -44,6 +45,12 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
   useEffect(() => { playingRef.current = isPlaying; }, [isPlaying]);
   useEffect(() => { idxRef.current = currentIndex; }, [currentIndex]);
+  useEffect(() => {
+    const check = function() { setIsDesktop(window.innerWidth >= 1024); };
+    check();
+    window.addEventListener('resize', check);
+    return function() { window.removeEventListener('resize', check); };
+  }, []);
 
   // Create audio element once
   useEffect(() => {
@@ -557,7 +564,9 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
                 {videoFormats.map(function(f, i) {
                   return (
                     <button key={f.id} onClick={function() { setFormatIdx(i); }} className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl transition-all text-xs font-bold" style={{ background: i === formatIdx ? 'var(--accent-light)' : 'var(--bg-card)', color: i === formatIdx ? 'var(--accent)' : 'var(--text-secondary)', border: i === formatIdx ? '1.5px solid var(--accent)' : '1.5px solid var(--border)' }}>
-                      <div className="border-2 rounded-sm" style={{ width: f.id === 'landscape' ? 28 : f.id === 'portrait' ? 16 : f.id === 'square' ? 22 : 20, height: f.id === 'landscape' ? 16 : f.id === 'portrait' ? 28 : f.id === 'square' ? 22 : 25, borderColor: i === formatIdx ? 'var(--accent)' : 'var(--text-secondary)' }} />
+                      <div className="flex items-center justify-center" style={{ width: 28, height: 28 }}>
+                        <div className="border-2 rounded-sm" style={{ width: f.id === 'landscape' ? 26 : f.id === 'portrait' ? 16 : f.id === 'square' ? 22 : 20, height: f.id === 'landscape' ? 16 : f.id === 'portrait' ? 26 : f.id === 'square' ? 22 : 25, borderColor: i === formatIdx ? 'var(--accent)' : 'var(--text-secondary)' }} />
+                      </div>
                       {f.label}
                     </button>
                   );
@@ -711,9 +720,9 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
         {/* Main area */}
         <div className="order-1 lg:order-2 flex-1 flex flex-col overflow-hidden">
-          {/* Preview — NO border div */}
-          <div className="flex-1 flex items-center justify-center p-4 sm:p-6 overflow-y-auto" style={{ background: 'var(--bg-primary)' }}>
-            <div className="rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: format.ratio, maxHeight: '100%', maxWidth: '100%', width: format.id === 'portrait' ? 320 : format.id === 'square' ? 400 : format.id === 'social' ? 360 : 560 }}>
+          {/* Preview — compact on mobile so controls are visible */}
+          <div className="flex items-center justify-center p-3 sm:p-6 overflow-y-auto max-h-[45vh] lg:max-h-[70vh]" style={{ background: 'var(--bg-primary)' }}>
+            <div className="rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: format.ratio, maxHeight: '100%', maxWidth: '100%', width: isDesktop ? (format.id === 'portrait' ? 320 : format.id === 'square' ? 400 : format.id === 'social' ? 360 : 560) : (format.id === 'portrait' ? 200 : format.id === 'square' ? 240 : format.id === 'social' ? 220 : 320) }}>
               <div className="w-full h-full flex flex-col items-center justify-center p-6 sm:p-10 relative" style={getPreviewStyle()}>
                 <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,' + (overlayOpacity / 100) + ')' }} />
                 <div className="relative z-10 text-center w-full">
