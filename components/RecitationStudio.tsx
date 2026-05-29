@@ -556,14 +556,14 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-56px)]">
         {/* Sidebar — visible always, scrolls below preview on mobile, side panel on desktop */}
         <div className="order-2 lg:order-1 overflow-y-auto border-t lg:border-t-0 lg:border-r flex-shrink-0" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', width: '320px', maxWidth: '100%' }} dir="ltr">
-          <div className="p-4 space-y-5">
+          <div className="p-3 space-y-3">
             {/* Format */}
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider mb-3 block" style={{ color: 'var(--text-secondary)' }}>{t('studio.format', lang)}</label>
-              <div className="grid grid-cols-4 gap-2">
+              <label className="text-xs font-semibold uppercase tracking-wider mb-2 block" style={{ color: 'var(--text-secondary)' }}>{t('studio.format', lang)}</label>
+              <div className="grid grid-cols-4 gap-1.5">
                 {videoFormats.map(function(f, i) {
                   return (
-                    <button key={f.id} onClick={function() { setFormatIdx(i); }} className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl transition-all text-xs font-bold" style={{ background: i === formatIdx ? 'var(--accent-light)' : 'var(--bg-card)', color: i === formatIdx ? 'var(--accent)' : 'var(--text-secondary)', border: i === formatIdx ? '1.5px solid var(--accent)' : '1.5px solid var(--border)' }}>
+                    <button key={f.id} onClick={function() { setFormatIdx(i); }} className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all text-xs font-bold" style={{ background: i === formatIdx ? 'var(--accent-light)' : 'var(--bg-card)', color: i === formatIdx ? 'var(--accent)' : 'var(--text-secondary)', border: i === formatIdx ? '1.5px solid var(--accent)' : '1.5px solid var(--border)' }}>
                       <div className="flex items-center justify-center" style={{ width: 28, height: 28 }}>
                         <div className="border-2 rounded-sm" style={{ width: f.id === 'landscape' ? 26 : f.id === 'portrait' ? 16 : f.id === 'square' ? 22 : 20, height: f.id === 'landscape' ? 16 : f.id === 'portrait' ? 26 : f.id === 'square' ? 22 : 25, borderColor: i === formatIdx ? 'var(--accent)' : 'var(--text-secondary)' }} />
                       </div>
@@ -610,7 +610,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
             {/* Reciter */}
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider mb-3 block" style={{ color: 'var(--text-secondary)' }}>{t('studio.reciter', lang)}</label>
+              <label className="text-xs font-semibold uppercase tracking-wider mb-2 block" style={{ color: 'var(--text-secondary)' }}>{t('studio.reciter', lang)}</label>
               <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
                 {reciters.map(function(r, i) {
                   return (
@@ -625,7 +625,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
             {/* Background */}
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider mb-3 block" style={{ color: 'var(--text-secondary)' }}>{t('studio.background', lang)}</label>
+              <label className="text-xs font-semibold uppercase tracking-wider mb-2 block" style={{ color: 'var(--text-secondary)' }}>{t('studio.background', lang)}</label>
               <div className="flex rounded-xl overflow-hidden mb-3" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
                 {(['gradients', 'photos', 'import'] as BgTab[]).map(function(tab) {
                   const label = tab === 'gradients' ? t('studio.gradients', lang) : tab === 'photos' ? t('studio.photos', lang) : t('studio.import', lang);
