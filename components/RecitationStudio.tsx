@@ -358,19 +358,24 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       canvasStream.getVideoTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
       audioDest.stream.getAudioTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
 
-      // Pick best supported codec — prefer MP4 for phone compatibility, fall back to WebM
+      // Pick best supported codec — prefer WebM (seekable via fix-webm-duration), fall back to MP4 for Safari
       let mimeType = 'video/webm';
       let fileExt = 'webm';
-      if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')) {
+      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+        mimeType = 'video/webm;codecs=vp8,opus';
+        fileExt = 'webm';
+      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+        mimeType = 'video/webm;codecs=vp9,opus';
+        fileExt = 'webm';
+      } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        mimeType = 'video/webm';
+        fileExt = 'webm';
+      } else if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')) {
         mimeType = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
         fileExt = 'mp4';
       } else if (MediaRecorder.isTypeSupported('video/mp4')) {
         mimeType = 'video/mp4';
         fileExt = 'mp4';
-      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-        mimeType = 'video/webm;codecs=vp8,opus';
-      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
-        mimeType = 'video/webm;codecs=vp9,opus';
       }
 
       const chunks: Blob[] = [];
