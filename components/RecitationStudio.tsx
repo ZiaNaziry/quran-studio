@@ -399,8 +399,8 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       });
 
       const recordingStartTime = Date.now();
-      // No timeslice — record in one continuous pass to avoid audio glitches at chunk boundaries
-      recorder.start();
+      // 1000ms timeslice — large enough to avoid audio glitches, small enough for proper WebM clusters
+      recorder.start(1000);
 
       // Continuous canvas redraw using requestAnimationFrame for smooth, browser-synced frames
       // captureStream(30) auto-captures at 30fps — we just need to keep the canvas updated
