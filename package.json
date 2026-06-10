@@ -8,10 +8,10 @@
     "start": "next start"
   },
   "dependencies": {
-    "fix-webm-duration": "^1.0.6",
     "next": "^14.2.35",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "webm-duration-fix": "^1.0.4"
   },
   "devDependencies": {
     "@types/node": "^20",

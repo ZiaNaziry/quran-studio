@@ -5,7 +5,7 @@ import { Surah, Verse, Background, GradientBackground, PhotoBackground, BgTab, V
 import { reciters, getAudioUrl } from '../lib/reciters';
 import { gradients, photos, photoCategories, PhotoCategory, videoFormats, getGradientCSS } from '../lib/backgrounds';
 import { Language, t } from '../lib/i18n';
-import fixWebmDuration from 'fix-webm-duration';
+import fixWebmDuration from 'webm-duration-fix';
 
 interface Props {
   surah: Surah;
@@ -367,16 +367,10 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       canvasStream.getVideoTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
       audioDest.stream.getAudioTracks().forEach(function(tr) { combinedStream.addTrack(tr); });
 
-      // Pick best supported codec — MP4 first for universal playback + seekability, WebM fallback
+      // Pick best supported codec — WebM first (duration fixable), MP4 fallback (Safari)
       let mimeType = 'video/webm';
       let fileExt = 'webm';
-      if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')) {
-        mimeType = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
-        fileExt = 'mp4';
-      } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-        mimeType = 'video/mp4';
-        fileExt = 'mp4';
-      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+      if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
         mimeType = 'video/webm;codecs=vp8,opus';
         fileExt = 'webm';
       } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
@@ -385,6 +379,12 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       } else if (MediaRecorder.isTypeSupported('video/webm')) {
         mimeType = 'video/webm';
         fileExt = 'webm';
+      } else if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')) {
+        mimeType = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
+        fileExt = 'mp4';
+      } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+        mimeType = 'video/mp4';
+        fileExt = 'mp4';
       }
 
       const chunks: Blob[] = [];
@@ -398,7 +398,6 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         recorder.onstop = function() { resolve(); };
       });
 
-      const recordingStartTime = Date.now();
       // 1000ms timeslice — large enough to avoid audio glitches, small enough for proper WebM clusters
       recorder.start(1000);
 
@@ -470,13 +469,11 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         return;
       }
 
-      // Fix duration metadata for seekability
-      const recordingDuration = Date.now() - recordingStartTime;
+      // Fix WebM duration metadata — the library auto-calculates from EBML clusters
       let blob = rawBlob;
       if (fileExt === 'webm') {
-        // Fix WebM duration metadata so video is seekable
         try {
-          blob = await fixWebmDuration(rawBlob, recordingDuration, { logger: false });
+          blob = await fixWebmDuration(rawBlob);
         } catch {
           blob = rawBlob;
         }
