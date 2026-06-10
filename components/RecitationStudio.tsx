@@ -355,8 +355,9 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       drawVerseOnCanvas(ctx, verses[0], format.width, format.height, bgImg);
 
       // AudioContext to capture audio into the recording
+      // Force 48kHz sample rate — standard for video audio, avoids resampling glitches
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioCtxClass();
+      const audioCtx = new AudioCtxClass({ sampleRate: 48000 });
       const audioDest = audioCtx.createMediaStreamDestination();
 
       // Combine canvas video + audio tracks — captureStream(30) lets the browser
@@ -387,7 +388,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       }
 
       const chunks: Blob[] = [];
-      const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 2500000 });
+      const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 2500000, audioBitsPerSecond: 128000 });
 
       // Set ALL handlers BEFORE starting
       recorder.ondataavailable = function(e) {
@@ -398,7 +399,8 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       });
 
       const recordingStartTime = Date.now();
-      recorder.start(200);
+      // No timeslice — record in one continuous pass to avoid audio glitches at chunk boundaries
+      recorder.start();
 
       // Continuous canvas redraw using requestAnimationFrame for smooth, browser-synced frames
       // captureStream(30) auto-captures at 30fps — we just need to keep the canvas updated
