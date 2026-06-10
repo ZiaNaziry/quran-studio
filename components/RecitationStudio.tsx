@@ -6,6 +6,7 @@ import { reciters, getAudioUrl } from '../lib/reciters';
 import { gradients, photos, photoCategories, PhotoCategory, videoFormats, getGradientCSS } from '../lib/backgrounds';
 import { Language, t } from '../lib/i18n';
 import fixWebmDuration from 'webm-duration-fix';
+import fixMp4Duration from '../lib/fixMp4Duration';
 
 interface Props {
   surah: Surah;
@@ -400,6 +401,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
       // No timeslice for MP4 — single continuous recording eliminates audio glitches at chunk boundaries
       // For WebM fallback, use 1000ms timeslice for proper cluster structure
+      const recordingStartTime = Date.now();
       if (fileExt === 'webm') {
         recorder.start(1000);
       } else {
@@ -474,9 +476,16 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         return;
       }
 
-      // Fix WebM duration metadata — the library auto-calculates from EBML clusters
+      // Fix duration metadata — browsers produce broken duration in both MP4 and WebM
       let blob = rawBlob;
-      if (fileExt === 'webm') {
+      const actualDurationMs = Date.now() - recordingStartTime;
+      if (fileExt === 'mp4') {
+        try {
+          blob = await fixMp4Duration(rawBlob, actualDurationMs);
+        } catch {
+          blob = rawBlob;
+        }
+      } else if (fileExt === 'webm') {
         try {
           blob = await fixWebmDuration(rawBlob);
         } catch {
