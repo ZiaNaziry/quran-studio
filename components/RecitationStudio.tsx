@@ -388,7 +388,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       }
 
       const chunks: Blob[] = [];
-      const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 2500000, audioBitsPerSecond: 128000 });
+      const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 5000000, audioBitsPerSecond: 192000 });
 
       // Set ALL handlers BEFORE starting
       recorder.ondataavailable = function(e) {
@@ -398,8 +398,13 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         recorder.onstop = function() { resolve(); };
       });
 
-      // 1000ms timeslice — large enough to avoid audio glitches, small enough for proper WebM clusters
-      recorder.start(1000);
+      // No timeslice for MP4 — single continuous recording eliminates audio glitches at chunk boundaries
+      // For WebM fallback, use 1000ms timeslice for proper cluster structure
+      if (fileExt === 'webm') {
+        recorder.start(1000);
+      } else {
+        recorder.start();
+      }
 
       // Continuous canvas redraw using requestAnimationFrame for smooth, browser-synced frames
       // captureStream(30) auto-captures at 30fps — we just need to keep the canvas updated
