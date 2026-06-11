@@ -369,6 +369,22 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         return;
       }
 
+      // Detect supported audio codec — AAC preferred (Safari), Opus fallback (Chrome)
+      let audioCodecId: 'aac' | 'opus' = 'aac';
+      let audioEncoderCodec = 'mp4a.40.2';
+      try {
+        const aacCheck = await AudioEncoderCls.isConfigSupported({
+          codec: 'mp4a.40.2', numberOfChannels: 2, sampleRate: 48000, bitrate: 192_000,
+        });
+        if (!aacCheck.supported) {
+          audioCodecId = 'opus';
+          audioEncoderCodec = 'opus';
+        }
+      } catch {
+        audioCodecId = 'opus';
+        audioEncoderCodec = 'opus';
+      }
+
       // Create mp4-muxer — produces a proper non-fragmented MP4 with correct duration
       const muxTarget = new ArrayBufferTarget();
       const muxer = new Muxer({
@@ -379,7 +395,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
           height: format.height,
         },
         audio: {
-          codec: 'aac',
+          codec: audioCodecId,
           numberOfChannels: 2,
           sampleRate: 48000,
         },
@@ -389,7 +405,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
       // Video encoder — H.264 High profile Level 4.0 (supports up to 1080p, universal playback)
       const videoEncoder = new VideoEncoderCls({
-        output: function(chunk: any, meta: any) { try { muxer.addVideoChunk(chunk, meta); } catch(e) { console.error(e); } },
+        output: function(chunk: any, meta: any) { try { muxer.addVideoChunk(chunk, meta); } catch(e) { console.error('Muxer video error:', e); } },
         error: function(e: any) { console.error('VideoEncoder error:', e); },
       });
       videoEncoder.configure({
@@ -400,13 +416,13 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         framerate: 30,
       });
 
-      // Audio encoder — AAC-LC (universal iPhone/TikTok support)
+      // Audio encoder — uses detected codec (AAC or Opus)
       const audioEncoder = new AudioEncoderCls({
-        output: function(chunk: any, meta: any) { try { muxer.addAudioChunk(chunk, meta); } catch(e) { console.error(e); } },
+        output: function(chunk: any, meta: any) { try { muxer.addAudioChunk(chunk, meta); } catch(e) { console.error('Muxer audio error:', e); } },
         error: function(e: any) { console.error('AudioEncoder error:', e); },
       });
       audioEncoder.configure({
-        codec: 'mp4a.40.2',
+        codec: audioEncoderCodec,
         numberOfChannels: 2,
         sampleRate: 48000,
         bitrate: 192_000,
