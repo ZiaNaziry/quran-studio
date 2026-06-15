@@ -337,7 +337,281 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     setTimeout(function() { setIsDownloading(false); setDownloadType(''); }, 500);
   }
 
-  // Download as video WITH AUDIO
+  // Check if WebCodecs API is available (Chrome 94+, NOT available on most iPhones)
+  function hasWebCodecs(): boolean {
+    return !!(
+      (self as any).VideoEncoder &&
+      (self as any).AudioEncoder &&
+      (self as any).VideoFrame &&
+      (self as any).AudioData
+    );
+  }
+
+  // ===== PATH A: WebCodecs + mp4-muxer (Chrome/Edge — correct duration) =====
+  async function downloadVideoWebCodecs(bgImg: HTMLImageElement | null, canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
+    const VideoEncoderCls = (self as any).VideoEncoder;
+    const AudioEncoderCls = (self as any).AudioEncoder;
+    const VideoFrameCls = (self as any).VideoFrame;
+    const AudioDataCls = (self as any).AudioData;
+
+    // Detect supported audio codec — AAC preferred (Safari), Opus fallback (Chrome)
+    let audioCodecId: 'aac' | 'opus' = 'aac';
+    let audioEncoderCodec = 'mp4a.40.2';
+    try {
+      const aacCheck = await AudioEncoderCls.isConfigSupported({
+        codec: 'mp4a.40.2', numberOfChannels: 2, sampleRate: 48000, bitrate: 192_000,
+      });
+      if (!aacCheck.supported) {
+        audioCodecId = 'opus';
+        audioEncoderCodec = 'opus';
+      }
+    } catch {
+      audioCodecId = 'opus';
+      audioEncoderCodec = 'opus';
+    }
+
+    const muxTarget = new ArrayBufferTarget();
+    const muxer = new Muxer({
+      target: muxTarget,
+      video: { codec: 'avc', width: format.width, height: format.height },
+      audio: { codec: audioCodecId, numberOfChannels: 2, sampleRate: 48000 },
+      fastStart: 'in-memory',
+      firstTimestampBehavior: 'offset',
+    });
+
+    const videoEncoder = new VideoEncoderCls({
+      output: function(chunk: any, meta: any) { try { muxer.addVideoChunk(chunk, meta); } catch(e) { console.error('Muxer video error:', e); } },
+      error: function(e: any) { console.error('VideoEncoder error:', e); },
+    });
+    videoEncoder.configure({
+      codec: 'avc1.640028',
+      width: format.width,
+      height: format.height,
+      bitrate: 5_000_000,
+      framerate: 30,
+    });
+
+    const audioEncoder = new AudioEncoderCls({
+      output: function(chunk: any, meta: any) { try { muxer.addAudioChunk(chunk, meta); } catch(e) { console.error('Muxer audio error:', e); } },
+      error: function(e: any) { console.error('AudioEncoder error:', e); },
+    });
+    audioEncoder.configure({
+      codec: audioEncoderCodec,
+      numberOfChannels: 2,
+      sampleRate: 48000,
+      bitrate: 192_000,
+    });
+
+    const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+    const audioCtx = new AudioCtxClass({ sampleRate: 48000 });
+
+    const scriptProcessor = audioCtx.createScriptProcessor(4096, 2, 2);
+    let audioTimestamp = 0;
+    let audioCapturing = true;
+    scriptProcessor.onaudioprocess = function(event: AudioProcessingEvent) {
+      if (!audioCapturing) return;
+      const inp = event.inputBuffer;
+      const out = event.outputBuffer;
+      const numFrames = inp.length;
+      for (let ch = 0; ch < 2; ch++) { out.getChannelData(ch).set(inp.getChannelData(ch)); }
+      try {
+        const planar = new Float32Array(numFrames * 2);
+        planar.set(inp.getChannelData(0), 0);
+        planar.set(inp.getChannelData(1), numFrames);
+        const audioData = new AudioDataCls({
+          format: 'f32-planar', sampleRate: 48000, numberOfFrames: numFrames,
+          numberOfChannels: 2, timestamp: audioTimestamp, data: planar,
+        });
+        audioEncoder.encode(audioData);
+        audioData.close();
+      } catch(e) { console.error('Audio capture error:', e); }
+      audioTimestamp += Math.round((numFrames / 48000) * 1_000_000);
+    };
+    scriptProcessor.connect(audioCtx.destination);
+
+    const recordStart = Date.now();
+    let frameCount = 0;
+    let videoCapturing = true;
+    const frameCaptureInterval = setInterval(function() {
+      if (!videoCapturing) return;
+      try {
+        const ts = (Date.now() - recordStart) * 1000;
+        const frame = new VideoFrameCls(canvas, { timestamp: ts });
+        videoEncoder.encode(frame, { keyFrame: frameCount % 30 === 0 });
+        frame.close();
+        frameCount++;
+      } catch(e) { console.error('Frame capture error:', e); }
+    }, 33);
+
+    let drawVerse = verses[0];
+    let frameRunning = true;
+    const redrawLoop = function() {
+      if (!frameRunning) return;
+      drawVerseOnCanvas(ctx, drawVerse, format.width, format.height, bgImg);
+      requestAnimationFrame(redrawLoop);
+    };
+    requestAnimationFrame(redrawLoop);
+
+    await new Promise(function(r) { setTimeout(r, 300); });
+
+    // Pre-fetch audio
+    setDownloadProgress(5);
+    const audioBuffers: (AudioBuffer | null)[] = [];
+    for (let i = 0; i < verses.length; i++) {
+      const verse = verses[i];
+      const url = getAudioUrl(reciter, surah.number, verse.numberInSurah, verse.number);
+      try {
+        const res = await fetch(url);
+        const ab = await res.arrayBuffer();
+        const decoded = await audioCtx.decodeAudioData(ab);
+        audioBuffers.push(decoded);
+      } catch { audioBuffers.push(null); }
+      setDownloadProgress(Math.round(5 + (i / verses.length) * 20));
+    }
+
+    // Play and encode each verse
+    for (let i = 0; i < verses.length; i++) {
+      drawVerse = verses[i];
+      drawVerseOnCanvas(ctx, verses[i], format.width, format.height, bgImg);
+      setDownloadProgress(Math.round(25 + (i / verses.length) * 65));
+      const buf = audioBuffers[i];
+      if (buf) {
+        await new Promise<void>(function(resolve) {
+          const src = audioCtx.createBufferSource();
+          src.buffer = buf;
+          src.connect(scriptProcessor);
+          src.onended = function() { resolve(); };
+          src.start(0);
+        });
+      } else {
+        await new Promise(function(r) { setTimeout(r, 3000); });
+      }
+      await new Promise(function(r) { setTimeout(r, 300); });
+    }
+
+    frameRunning = false;
+    videoCapturing = false;
+    audioCapturing = false;
+    clearInterval(frameCaptureInterval);
+    scriptProcessor.disconnect();
+    setDownloadProgress(92);
+
+    await videoEncoder.flush();
+    await audioEncoder.flush();
+    videoEncoder.close();
+    audioEncoder.close();
+    muxer.finalize();
+    await audioCtx.close();
+
+    const mp4Buffer = muxTarget.buffer;
+    if (!mp4Buffer || mp4Buffer.byteLength < 1000) {
+      throw new Error('Recording produced an empty file');
+    }
+
+    return new Blob([mp4Buffer], { type: 'video/mp4' });
+  }
+
+  // ===== PATH B: MediaRecorder fallback (Safari/iPhone — produces correct MP4 natively) =====
+  async function downloadVideoMediaRecorder(bgImg: HTMLImageElement | null, canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
+    const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+    const audioCtx = new AudioCtxClass({ sampleRate: 48000 });
+
+    // Create a destination node that merges canvas video + audio
+    const dest = audioCtx.createMediaStreamDestination();
+
+    // Get canvas video stream
+    const canvasStream = canvas.captureStream(30);
+    const videoTrack = canvasStream.getVideoTracks()[0];
+
+    // Combine video track + audio destination into one stream
+    const combinedStream = new MediaStream([videoTrack, ...dest.stream.getAudioTracks()]);
+
+    // Choose the best supported MIME type
+    let mimeType = 'video/mp4';
+    if (typeof MediaRecorder !== 'undefined') {
+      const types = ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4;codecs=h264,aac', 'video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm'];
+      for (const t of types) {
+        if (MediaRecorder.isTypeSupported(t)) { mimeType = t; break; }
+      }
+    }
+
+    const chunks: Blob[] = [];
+    const recorder = new MediaRecorder(combinedStream, {
+      mimeType: mimeType,
+      videoBitsPerSecond: 5_000_000,
+      audioBitsPerSecond: 192_000,
+    });
+    recorder.ondataavailable = function(e) { if (e.data.size > 0) chunks.push(e.data); };
+
+    // Start recording
+    recorder.start();
+
+    // Keep canvas fresh
+    let drawVerse = verses[0];
+    let frameRunning = true;
+    const redrawLoop = function() {
+      if (!frameRunning) return;
+      drawVerseOnCanvas(ctx, drawVerse, format.width, format.height, bgImg);
+      requestAnimationFrame(redrawLoop);
+    };
+    requestAnimationFrame(redrawLoop);
+
+    // Pre-fetch audio
+    setDownloadProgress(5);
+    const audioBuffers: (AudioBuffer | null)[] = [];
+    for (let i = 0; i < verses.length; i++) {
+      const verse = verses[i];
+      const url = getAudioUrl(reciter, surah.number, verse.numberInSurah, verse.number);
+      try {
+        const res = await fetch(url);
+        const ab = await res.arrayBuffer();
+        const decoded = await audioCtx.decodeAudioData(ab);
+        audioBuffers.push(decoded);
+      } catch { audioBuffers.push(null); }
+      setDownloadProgress(Math.round(5 + (i / verses.length) * 20));
+    }
+
+    // Play each verse through the audio destination
+    for (let i = 0; i < verses.length; i++) {
+      drawVerse = verses[i];
+      drawVerseOnCanvas(ctx, verses[i], format.width, format.height, bgImg);
+      setDownloadProgress(Math.round(25 + (i / verses.length) * 65));
+      const buf = audioBuffers[i];
+      if (buf) {
+        await new Promise<void>(function(resolve) {
+          const src = audioCtx.createBufferSource();
+          src.buffer = buf;
+          src.connect(dest);
+          src.onended = function() { resolve(); };
+          src.start(0);
+        });
+      } else {
+        await new Promise(function(r) { setTimeout(r, 3000); });
+      }
+      await new Promise(function(r) { setTimeout(r, 300); });
+    }
+
+    frameRunning = false;
+    setDownloadProgress(92);
+
+    // Stop recorder and collect the blob
+    const blob = await new Promise<Blob>(function(resolve) {
+      recorder.onstop = function() {
+        resolve(new Blob(chunks, { type: mimeType }));
+      };
+      recorder.stop();
+    });
+
+    await audioCtx.close();
+
+    if (blob.size < 1000) {
+      throw new Error('Recording produced an empty file');
+    }
+
+    return blob;
+  }
+
+  // Download as video WITH AUDIO — auto-selects best method for the browser
   async function downloadVideo() {
     setIsDownloading(true);
     setDownloadType('video');
@@ -351,210 +625,16 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       const ctx = canvas.getContext('2d');
       if (!ctx) { alert('Canvas not supported'); setIsDownloading(false); return; }
 
-      // Draw first frame
       drawVerseOnCanvas(ctx, verses[0], format.width, format.height, bgImg);
 
-      // ===== WebCodecs + mp4-muxer approach =====
-      // Completely bypasses MediaRecorder (which produces broken duration metadata).
-      // Instead, we encode video frames and audio samples directly into a proper MP4 file.
-      const VideoEncoderCls = (self as any).VideoEncoder;
-      const AudioEncoderCls = (self as any).AudioEncoder;
-      const VideoFrameCls = (self as any).VideoFrame;
-      const AudioDataCls = (self as any).AudioData;
-
-      if (!VideoEncoderCls || !AudioEncoderCls || !VideoFrameCls || !AudioDataCls) {
-        alert('Your browser does not support video creation. Please use Chrome 94+ or Safari 16.4+.');
-        setIsDownloading(false);
-        setDownloadType('');
-        return;
-      }
-
-      // Detect supported audio codec — AAC preferred (Safari), Opus fallback (Chrome)
-      let audioCodecId: 'aac' | 'opus' = 'aac';
-      let audioEncoderCodec = 'mp4a.40.2';
-      try {
-        const aacCheck = await AudioEncoderCls.isConfigSupported({
-          codec: 'mp4a.40.2', numberOfChannels: 2, sampleRate: 48000, bitrate: 192_000,
-        });
-        if (!aacCheck.supported) {
-          audioCodecId = 'opus';
-          audioEncoderCodec = 'opus';
-        }
-      } catch {
-        audioCodecId = 'opus';
-        audioEncoderCodec = 'opus';
-      }
-
-      // Create mp4-muxer — produces a proper non-fragmented MP4 with correct duration
-      const muxTarget = new ArrayBufferTarget();
-      const muxer = new Muxer({
-        target: muxTarget,
-        video: {
-          codec: 'avc',
-          width: format.width,
-          height: format.height,
-        },
-        audio: {
-          codec: audioCodecId,
-          numberOfChannels: 2,
-          sampleRate: 48000,
-        },
-        fastStart: 'in-memory',
-        firstTimestampBehavior: 'offset',
-      });
-
-      // Video encoder — H.264 High profile Level 4.0 (supports up to 1080p, universal playback)
-      const videoEncoder = new VideoEncoderCls({
-        output: function(chunk: any, meta: any) { try { muxer.addVideoChunk(chunk, meta); } catch(e) { console.error('Muxer video error:', e); } },
-        error: function(e: any) { console.error('VideoEncoder error:', e); },
-      });
-      videoEncoder.configure({
-        codec: 'avc1.640028',
-        width: format.width,
-        height: format.height,
-        bitrate: 5_000_000,
-        framerate: 30,
-      });
-
-      // Audio encoder — uses detected codec (AAC or Opus)
-      const audioEncoder = new AudioEncoderCls({
-        output: function(chunk: any, meta: any) { try { muxer.addAudioChunk(chunk, meta); } catch(e) { console.error('Muxer audio error:', e); } },
-        error: function(e: any) { console.error('AudioEncoder error:', e); },
-      });
-      audioEncoder.configure({
-        codec: audioEncoderCodec,
-        numberOfChannels: 2,
-        sampleRate: 48000,
-        bitrate: 192_000,
-      });
-
-      // AudioContext for playback + raw sample capture
-      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioCtxClass({ sampleRate: 48000 });
-
-      // ScriptProcessorNode taps into the audio graph to capture raw PCM samples
-      const scriptProcessor = audioCtx.createScriptProcessor(4096, 2, 2);
-      let audioTimestamp = 0;
-      let audioCapturing = true;
-      scriptProcessor.onaudioprocess = function(event: AudioProcessingEvent) {
-        if (!audioCapturing) return;
-        const inp = event.inputBuffer;
-        const out = event.outputBuffer;
-        const numFrames = inp.length;
-
-        // Pass audio through to speakers so user hears playback
-        for (let ch = 0; ch < 2; ch++) {
-          out.getChannelData(ch).set(inp.getChannelData(ch));
-        }
-
-        // Feed raw float32 samples to audio encoder
-        try {
-          const planar = new Float32Array(numFrames * 2);
-          planar.set(inp.getChannelData(0), 0);
-          planar.set(inp.getChannelData(1), numFrames);
-
-          const audioData = new AudioDataCls({
-            format: 'f32-planar',
-            sampleRate: 48000,
-            numberOfFrames: numFrames,
-            numberOfChannels: 2,
-            timestamp: audioTimestamp,
-            data: planar,
-          });
-          audioEncoder.encode(audioData);
-          audioData.close();
-        } catch(e) { console.error('Audio capture error:', e); }
-
-        audioTimestamp += Math.round((numFrames / 48000) * 1_000_000);
-      };
-      scriptProcessor.connect(audioCtx.destination);
-
-      // Capture canvas as video frames at 30fps
-      const recordStart = Date.now();
-      let frameCount = 0;
-      let videoCapturing = true;
-      const frameCaptureInterval = setInterval(function() {
-        if (!videoCapturing) return;
-        try {
-          const ts = (Date.now() - recordStart) * 1000; // ms → microseconds
-          const frame = new VideoFrameCls(canvas, { timestamp: ts });
-          videoEncoder.encode(frame, { keyFrame: frameCount % 30 === 0 });
-          frame.close();
-          frameCount++;
-        } catch(e) { console.error('Frame capture error:', e); }
-      }, 33); // ~30fps
-
-      // Keep canvas content fresh via requestAnimationFrame
-      let drawVerse = verses[0];
-      let frameRunning = true;
-      const redrawLoop = function() {
-        if (!frameRunning) return;
-        drawVerseOnCanvas(ctx, drawVerse, format.width, format.height, bgImg);
-        requestAnimationFrame(redrawLoop);
-      };
-      requestAnimationFrame(redrawLoop);
-
-      // Warmup delay for encoders
-      await new Promise(function(r) { setTimeout(r, 300); });
-
-      // Pre-fetch all verse audio to avoid delays during recording
-      setDownloadProgress(5);
-      const audioBuffers: (AudioBuffer | null)[] = [];
-      for (let i = 0; i < verses.length; i++) {
-        const verse = verses[i];
-        const url = getAudioUrl(reciter, surah.number, verse.numberInSurah, verse.number);
-        try {
-          const res = await fetch(url);
-          const ab = await res.arrayBuffer();
-          const decoded = await audioCtx.decodeAudioData(ab);
-          audioBuffers.push(decoded);
-        } catch {
-          audioBuffers.push(null);
-        }
-        setDownloadProgress(Math.round(5 + (i / verses.length) * 20));
-      }
-
-      // Play and encode each verse
-      for (let i = 0; i < verses.length; i++) {
-        drawVerse = verses[i];
-        drawVerseOnCanvas(ctx, verses[i], format.width, format.height, bgImg);
-        setDownloadProgress(Math.round(25 + (i / verses.length) * 65));
-
-        const buf = audioBuffers[i];
-        if (buf) {
-          await new Promise<void>(function(resolve) {
-            const src = audioCtx.createBufferSource();
-            src.buffer = buf;
-            src.connect(scriptProcessor); // route through capture node
-            src.onended = function() { resolve(); };
-            src.start(0);
-          });
-        } else {
-          await new Promise(function(r) { setTimeout(r, 3000); });
-        }
-
-        await new Promise(function(r) { setTimeout(r, 300); });
-      }
-
-      // Stop all capture
-      frameRunning = false;
-      videoCapturing = false;
-      audioCapturing = false;
-      clearInterval(frameCaptureInterval);
-      scriptProcessor.disconnect();
-      setDownloadProgress(92);
-
-      // Flush encoders and finalize the MP4 file
-      await videoEncoder.flush();
-      await audioEncoder.flush();
-      videoEncoder.close();
-      audioEncoder.close();
-      muxer.finalize();
-      await audioCtx.close();
-
-      const mp4Buffer = muxTarget.buffer;
-      if (!mp4Buffer || mp4Buffer.byteLength < 1000) {
-        alert('Recording produced an empty file. Please try Chrome on desktop.');
+      // Use WebCodecs on Chrome/Edge (correct duration), MediaRecorder on Safari/iPhone
+      let blob: Blob;
+      if (hasWebCodecs()) {
+        blob = await downloadVideoWebCodecs(bgImg, canvas, ctx);
+      } else if (typeof MediaRecorder !== 'undefined') {
+        blob = await downloadVideoMediaRecorder(bgImg, canvas, ctx);
+      } else {
+        alert('Your browser does not support video creation. Please use Chrome or Safari.');
         setIsDownloading(false);
         setDownloadType('');
         return;
@@ -562,8 +642,6 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
       setDownloadProgress(98);
 
-      // Download the properly-muxed MP4 file
-      const blob = new Blob([mp4Buffer], { type: 'video/mp4' });
       const downloadName = surah.englishName.replace(/\s+/g, '-') + '-recitation.mp4';
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -579,7 +657,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       }, 3000);
       setDownloadProgress(100);
     } catch (err) {
-      alert('Video recording failed: ' + (err instanceof Error ? err.message : 'Unknown error') + '. Please use Chrome on desktop.');
+      alert('Video recording failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
     }
     setTimeout(function() { setIsDownloading(false); setDownloadType(''); }, 500);
   }
