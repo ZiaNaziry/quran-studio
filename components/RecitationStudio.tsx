@@ -511,7 +511,84 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     return new Blob([mp4Buffer], { type: 'video/mp4' });
   }
 
-  // ===== PATH B: MediaRecorder fallback (Safari/iPhone — produces correct MP4 natively) =====
+  // Fix MP4 duration by patching mvhd/tkhd/mdhd atoms in fragmented MP4
+  // MediaRecorder (both Chrome & Safari) produces fMP4 where duration = 0xFFFFFFFF (unknown),
+  // which players display as ~1988 hours. We overwrite with the real duration.
+  function fixMp4Duration(buffer: ArrayBuffer, durationSec: number): ArrayBuffer {
+    const result = new Uint8Array(buffer).slice().buffer;
+    const view = new DataView(result);
+    const bytes = new Uint8Array(result);
+
+    const findAtoms = function(type: string): number[] {
+      const positions: number[] = [];
+      const c0 = type.charCodeAt(0), c1 = type.charCodeAt(1);
+      const c2 = type.charCodeAt(2), c3 = type.charCodeAt(3);
+      for (let i = 0; i <= bytes.length - 8; i++) {
+        if (bytes[i + 4] === c0 && bytes[i + 5] === c1 && bytes[i + 6] === c2 && bytes[i + 7] === c3) {
+          positions.push(i);
+        }
+      }
+      return positions;
+    };
+
+    let movieTimescale = 1000;
+
+    // Patch mvhd (movie header) — sets overall movie duration
+    for (const pos of findAtoms('mvhd')) {
+      const version = bytes[pos + 8];
+      if (version === 0) {
+        movieTimescale = view.getUint32(pos + 20);
+        const dur = Math.round(durationSec * movieTimescale);
+        view.setUint32(pos + 24, dur);
+      } else if (version === 1) {
+        movieTimescale = view.getUint32(pos + 28);
+        const dur = Math.round(durationSec * movieTimescale);
+        const high = Math.floor(dur / 4294967296);
+        const low = dur % 4294967296;
+        view.setUint32(pos + 32, high);
+        view.setUint32(pos + 36, low);
+      }
+    }
+
+    // Patch tkhd (track headers) — uses movie timescale
+    for (const pos of findAtoms('tkhd')) {
+      const version = bytes[pos + 8];
+      const dur = Math.round(durationSec * movieTimescale);
+      if (version === 0) {
+        view.setUint32(pos + 28, dur);
+      } else if (version === 1) {
+        const high = Math.floor(dur / 4294967296);
+        const low = dur % 4294967296;
+        view.setUint32(pos + 36, high);
+        view.setUint32(pos + 40, low);
+      }
+    }
+
+    // Patch mdhd (media headers) — each track has its own timescale
+    for (const pos of findAtoms('mdhd')) {
+      const version = bytes[pos + 8];
+      if (version === 0) {
+        const ts = view.getUint32(pos + 20);
+        if (ts > 0) {
+          const dur = Math.round(durationSec * ts);
+          view.setUint32(pos + 24, dur);
+        }
+      } else if (version === 1) {
+        const ts = view.getUint32(pos + 28);
+        if (ts > 0) {
+          const dur = Math.round(durationSec * ts);
+          const high = Math.floor(dur / 4294967296);
+          const low = dur % 4294967296;
+          view.setUint32(pos + 32, high);
+          view.setUint32(pos + 36, low);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  // ===== PATH B: MediaRecorder fallback (Safari/iPhone) =====
   async function downloadVideoMediaRecorder(bgImg: HTMLImageElement | null, canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
     const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
     const audioCtx = new AudioCtxClass({ sampleRate: 48000 });
@@ -545,6 +622,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
     // Start recording
     recorder.start();
+    const recordStartMs = Date.now();
 
     // Keep canvas fresh
     let drawVerse = verses[0];
@@ -595,7 +673,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     setDownloadProgress(92);
 
     // Stop recorder and collect the blob
-    const blob = await new Promise<Blob>(function(resolve) {
+    const rawBlob = await new Promise<Blob>(function(resolve) {
       recorder.onstop = function() {
         resolve(new Blob(chunks, { type: mimeType }));
       };
@@ -604,11 +682,21 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
     await audioCtx.close();
 
-    if (blob.size < 1000) {
+    if (rawBlob.size < 1000) {
       throw new Error('Recording produced an empty file');
     }
 
-    return blob;
+    // Fix MP4 duration — MediaRecorder produces fragmented MP4 with broken/missing duration
+    // We know the exact recording time, so patch mvhd/tkhd/mdhd atoms
+    const durationSec = (Date.now() - recordStartMs) / 1000;
+    try {
+      const rawBuffer = await rawBlob.arrayBuffer();
+      const fixedBuffer = fixMp4Duration(rawBuffer, durationSec);
+      return new Blob([fixedBuffer], { type: rawBlob.type });
+    } catch (e) {
+      console.error('Duration fix failed, using raw blob:', e);
+      return rawBlob;
+    }
   }
 
   // Download as video WITH AUDIO — auto-selects best method for the browser
