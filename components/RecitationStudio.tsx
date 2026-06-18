@@ -654,7 +654,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       const rec = new MediaRecorder(vStream, { mimeType: mime, videoBitsPerSecond: 4_000_000 });
       rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
-      rec.start();
+      rec.start(1000); // emit data every 1s to reduce internal buffer
       setDownloadProgress(30);
 
       for (let i = 0; i < verses.length; i++) {
@@ -672,7 +672,15 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         setDownloadProgress(Math.round(30 + (i / verses.length) * 60));
       }
 
+      // Pad 2 seconds after last verse to prevent TikTok from trimming the end
+      await new Promise(r => setTimeout(r, 2000));
+
       setDownloadProgress(93);
+      // Flush any buffered data before stopping
+      if (typeof rec.requestData === 'function') {
+        try { rec.requestData(); } catch {}
+      }
+      await new Promise(r => setTimeout(r, 200)); // let flush complete
       const blob: Blob = await new Promise(resolve => {
         rec.onstop = () => resolve(new Blob(chunks, { type: mime }));
         rec.stop();
@@ -692,7 +700,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     });
     const inputData = new Uint8Array(await blob.arrayBuffer());
     await ffmpeg.writeFile('input.mp4', inputData);
-    await ffmpeg.exec(['-i', 'input.mp4', '-c', 'copy', '-movflags', '+faststart', 'output.mp4']);
+    await ffmpeg.exec(['-fflags', '+genpts+discardcorrupt', '-i', 'input.mp4', '-c', 'copy', '-movflags', '+faststart', '-avoid_negative_ts', 'make_zero', 'output.mp4']);
     const outputData = await ffmpeg.readFile('output.mp4');
     ffmpeg.terminate();
     const bytes = outputData instanceof Uint8Array ? outputData : new TextEncoder().encode(outputData as string);
