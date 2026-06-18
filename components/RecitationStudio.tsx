@@ -337,73 +337,93 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     setTimeout(function() { setIsDownloading(false); setDownloadType(''); }, 500);
   }
 
-  // Check if WebCodecs API is available (Chrome 94+, NOT available on most iPhones)
-  function hasWebCodecs(): boolean {
-    return !!(
-      (self as any).VideoEncoder &&
-      (self as any).AudioEncoder &&
-      (self as any).VideoFrame &&
-      (self as any).AudioData
-    );
+  // Check if WebCodecs API is available and H.264 encoding works
+  async function checkWebCodecs(): Promise<boolean> {
+    try {
+      const VE = (self as any).VideoEncoder;
+      const AE = (self as any).AudioEncoder;
+      const VF = (self as any).VideoFrame;
+      const AD = (self as any).AudioData;
+      if (!VE || !AE || !VF || !AD) return false;
+
+      // Verify H.264 encoding is actually supported (not just that the API exists)
+      const videoCheck = await VE.isConfigSupported({
+        codec: 'avc1.42001e', width: 640, height: 480, bitrate: 1_000_000, framerate: 30,
+      });
+      if (!videoCheck.supported) return false;
+
+      // Check audio (either AAC or Opus must work)
+      let audioOk = false;
+      try {
+        const aac = await AE.isConfigSupported({ codec: 'mp4a.40.2', numberOfChannels: 2, sampleRate: 44100, bitrate: 128_000 });
+        if (aac.supported) audioOk = true;
+      } catch {}
+      if (!audioOk) {
+        try {
+          const opus = await AE.isConfigSupported({ codec: 'opus', numberOfChannels: 2, sampleRate: 44100, bitrate: 128_000 });
+          if (opus.supported) audioOk = true;
+        } catch {}
+      }
+      return audioOk;
+    } catch { return false; }
   }
 
-  // ===== PATH A: WebCodecs + mp4-muxer (Chrome/Edge — correct duration) =====
+  // ===== Create video using WebCodecs + mp4-muxer (proper MP4 with correct duration) =====
   async function downloadVideoWebCodecs(bgImg: HTMLImageElement | null, canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
     const VideoEncoderCls = (self as any).VideoEncoder;
     const AudioEncoderCls = (self as any).AudioEncoder;
     const VideoFrameCls = (self as any).VideoFrame;
     const AudioDataCls = (self as any).AudioData;
 
-    // Detect supported audio codec — AAC preferred (Safari), Opus fallback (Chrome)
-    let audioCodecId: 'aac' | 'opus' = 'aac';
-    let audioEncoderCodec = 'mp4a.40.2';
+    // Detect best audio codec: AAC (Safari) or Opus (Chrome)
+    let audioCodecId: 'aac' | 'opus' = 'opus';
+    let audioEncoderCodec = 'opus';
     try {
       const aacCheck = await AudioEncoderCls.isConfigSupported({
-        codec: 'mp4a.40.2', numberOfChannels: 2, sampleRate: 48000, bitrate: 192_000,
+        codec: 'mp4a.40.2', numberOfChannels: 2, sampleRate: 44100, bitrate: 128_000,
       });
-      if (!aacCheck.supported) {
-        audioCodecId = 'opus';
-        audioEncoderCodec = 'opus';
-      }
-    } catch {
-      audioCodecId = 'opus';
-      audioEncoderCodec = 'opus';
-    }
+      if (aacCheck.supported) { audioCodecId = 'aac'; audioEncoderCodec = 'mp4a.40.2'; }
+    } catch {}
+
+    // Use Baseline H.264 profile for maximum device compatibility
+    const videoCodec = 'avc1.42001e';
 
     const muxTarget = new ArrayBufferTarget();
     const muxer = new Muxer({
       target: muxTarget,
       video: { codec: 'avc', width: format.width, height: format.height },
-      audio: { codec: audioCodecId, numberOfChannels: 2, sampleRate: 48000 },
+      audio: { codec: audioCodecId, numberOfChannels: 2, sampleRate: 44100 },
       fastStart: 'in-memory',
       firstTimestampBehavior: 'offset',
     });
 
+    let encoderError: string | null = null;
+
     const videoEncoder = new VideoEncoderCls({
-      output: function(chunk: any, meta: any) { try { muxer.addVideoChunk(chunk, meta); } catch(e) { console.error('Muxer video error:', e); } },
-      error: function(e: any) { console.error('VideoEncoder error:', e); },
+      output: function(chunk: any, meta: any) { try { muxer.addVideoChunk(chunk, meta); } catch(e: any) { encoderError = 'Video mux: ' + e.message; } },
+      error: function(e: any) { encoderError = 'VideoEncoder: ' + e.message; },
     });
     videoEncoder.configure({
-      codec: 'avc1.640028',
+      codec: videoCodec,
       width: format.width,
       height: format.height,
-      bitrate: 5_000_000,
+      bitrate: 4_000_000,
       framerate: 30,
     });
 
     const audioEncoder = new AudioEncoderCls({
-      output: function(chunk: any, meta: any) { try { muxer.addAudioChunk(chunk, meta); } catch(e) { console.error('Muxer audio error:', e); } },
-      error: function(e: any) { console.error('AudioEncoder error:', e); },
+      output: function(chunk: any, meta: any) { try { muxer.addAudioChunk(chunk, meta); } catch(e: any) { encoderError = 'Audio mux: ' + e.message; } },
+      error: function(e: any) { encoderError = 'AudioEncoder: ' + e.message; },
     });
     audioEncoder.configure({
       codec: audioEncoderCodec,
       numberOfChannels: 2,
-      sampleRate: 48000,
-      bitrate: 192_000,
+      sampleRate: 44100,
+      bitrate: 128_000,
     });
 
     const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-    const audioCtx = new AudioCtxClass({ sampleRate: 48000 });
+    const audioCtx = new AudioCtxClass({ sampleRate: 44100 });
 
     const scriptProcessor = audioCtx.createScriptProcessor(4096, 2, 2);
     let audioTimestamp = 0;
@@ -419,13 +439,13 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         planar.set(inp.getChannelData(0), 0);
         planar.set(inp.getChannelData(1), numFrames);
         const audioData = new AudioDataCls({
-          format: 'f32-planar', sampleRate: 48000, numberOfFrames: numFrames,
+          format: 'f32-planar', sampleRate: 44100, numberOfFrames: numFrames,
           numberOfChannels: 2, timestamp: audioTimestamp, data: planar,
         });
         audioEncoder.encode(audioData);
         audioData.close();
-      } catch(e) { console.error('Audio capture error:', e); }
-      audioTimestamp += Math.round((numFrames / 48000) * 1_000_000);
+      } catch {}
+      audioTimestamp += Math.round((numFrames / 44100) * 1_000_000);
     };
     scriptProcessor.connect(audioCtx.destination);
 
@@ -440,7 +460,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         videoEncoder.encode(frame, { keyFrame: frameCount % 30 === 0 });
         frame.close();
         frameCount++;
-      } catch(e) { console.error('Frame capture error:', e); }
+      } catch {}
     }, 33);
 
     let drawVerse = verses[0];
@@ -468,6 +488,9 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       } catch { audioBuffers.push(null); }
       setDownloadProgress(Math.round(5 + (i / verses.length) * 20));
     }
+
+    // Check for encoder errors after setup
+    if (encoderError) throw new Error(encoderError);
 
     // Play and encode each verse
     for (let i = 0; i < verses.length; i++) {
@@ -500,6 +523,9 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     await audioEncoder.flush();
     videoEncoder.close();
     audioEncoder.close();
+
+    if (encoderError) throw new Error(encoderError);
+
     muxer.finalize();
     await audioCtx.close();
 
@@ -511,130 +537,14 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     return new Blob([mp4Buffer], { type: 'video/mp4' });
   }
 
-  // Defragment MP4: converts fragmented MP4 (from MediaRecorder) to standard non-fragmented MP4
-  // fMP4 has duration=0xFFFFFFFF which iOS shows as ~1988 hours. Patching headers doesn't fix it
-  // because iOS recomputes duration from fragments. Solution: fully defragment using mp4box.js parser
-  // + mp4-muxer to create a proper standard MP4 with correct duration.
-  async function defragmentMP4(blob: Blob, w: number, h: number): Promise<Blob> {
-    const MP4BoxMod: any = await import('mp4box');
-    const MP4Box = MP4BoxMod.default || MP4BoxMod;
-    const buffer = await blob.arrayBuffer();
-    const file = MP4Box.createFile();
-
-    let videoTrack: any = null;
-    let audioTrack: any = null;
-    const samplesMap = new Map<number, any[]>();
-
-    return new Promise<Blob>(function(resolve, reject) {
-      file.onReady = function(info: any) {
-        for (const track of info.tracks) {
-          samplesMap.set(track.id, []);
-          if (track.type === 'video' && !videoTrack) videoTrack = track;
-          else if (track.type === 'audio' && !audioTrack) audioTrack = track;
-          file.setExtractionOptions(track.id, track, { nbSamples: 500000 });
-        }
-        file.start();
-      };
-
-      file.onSamples = function(trackId: number, _user: any, samples: any[]) {
-        const arr = samplesMap.get(trackId);
-        if (arr) arr.push(...samples);
-      };
-
-      file.onError = function(e: any) { reject(e); };
-
-      // Feed the entire fMP4 buffer
-      (buffer as any).fileStart = 0;
-      file.appendBuffer(buffer);
-      file.flush();
-
-      // By now onReady + onSamples have fired synchronously
-      try {
-        const videoSamples = videoTrack ? (samplesMap.get(videoTrack.id) || []) : [];
-        const audioSamples = audioTrack ? (samplesMap.get(audioTrack.id) || []) : [];
-
-        if (videoSamples.length === 0) {
-          reject(new Error('No video samples found in fMP4'));
-          return;
-        }
-
-        // Extract avcC codec description from binary (needed for mp4-muxer stsd)
-        const bytes = new Uint8Array(buffer);
-        let videoDesc: Uint8Array | undefined;
-        for (let i = 0; i < bytes.length - 8; i++) {
-          if (bytes[i+4]===0x61 && bytes[i+5]===0x76 && bytes[i+6]===0x63 && bytes[i+7]===0x43) {
-            const sz = (bytes[i]<<24)|(bytes[i+1]<<16)|(bytes[i+2]<<8)|bytes[i+3];
-            if (sz > 8 && sz < 2000 && i + sz <= bytes.length) {
-              videoDesc = bytes.slice(i + 8, i + sz);
-              break;
-            }
-          }
-        }
-
-        // Build a proper non-fragmented MP4 with mp4-muxer
-        const target = new ArrayBufferTarget();
-        const muxer = new Muxer({
-          target,
-          video: videoTrack ? {
-            codec: 'avc',
-            width: videoTrack.video?.width || w,
-            height: videoTrack.video?.height || h,
-          } : undefined,
-          audio: audioTrack ? {
-            codec: 'aac',
-            numberOfChannels: audioTrack.audio?.channel_count || 2,
-            sampleRate: audioTrack.audio?.sample_rate || 48000,
-          } : undefined,
-          fastStart: 'in-memory',
-          firstTimestampBehavior: 'offset',
-        });
-
-        // Helper: extract sample bytes regardless of data type
-        const getSampleBytes = function(s: any): Uint8Array {
-          if (s.data instanceof ArrayBuffer) return new Uint8Array(s.data);
-          if (s.data && s.data.buffer) return new Uint8Array(s.data.buffer, s.data.byteOffset, s.data.byteLength);
-          return new Uint8Array(s.data);
-        };
-
-        // Add video samples
-        for (let i = 0; i < videoSamples.length; i++) {
-          const s = videoSamples[i];
-          const tsMicro = Math.round(s.cts * 1_000_000 / s.timescale);
-          const durMicro = Math.round(s.duration * 1_000_000 / s.timescale);
-          const isKey = !!(s.is_sync || s.is_rap);
-          const meta: any = (i === 0 && videoDesc) ? { decoderConfig: { description: videoDesc } } : undefined;
-          muxer.addVideoChunkRaw(getSampleBytes(s), isKey ? 'key' : 'delta', tsMicro, durMicro, meta);
-        }
-
-        // Add audio samples
-        for (let i = 0; i < audioSamples.length; i++) {
-          const s = audioSamples[i];
-          const tsMicro = Math.round(s.cts * 1_000_000 / s.timescale);
-          const durMicro = Math.round(s.duration * 1_000_000 / s.timescale);
-          muxer.addAudioChunkRaw(getSampleBytes(s), 'key', tsMicro, durMicro);
-        }
-
-        muxer.finalize();
-        resolve(new Blob([target.buffer], { type: 'video/mp4' }));
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
-
-  // ===== PATH B: MediaRecorder fallback (Safari/iPhone) =====
+  // ===== Fallback: MediaRecorder (for old browsers without WebCodecs) =====
   async function downloadVideoMediaRecorder(bgImg: HTMLImageElement | null, canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
     const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-    const audioCtx = new AudioCtxClass({ sampleRate: 48000 });
+    const audioCtx = new AudioCtxClass({ sampleRate: 44100 });
 
-    // Create a destination node that merges canvas video + audio
     const dest = audioCtx.createMediaStreamDestination();
-
-    // Get canvas video stream
     const canvasStream = canvas.captureStream(30);
     const videoTrack = canvasStream.getVideoTracks()[0];
-
-    // Combine video track + audio destination into one stream
     const combinedStream = new MediaStream([videoTrack, ...dest.stream.getAudioTracks()]);
 
     // Choose the best supported MIME type
@@ -649,16 +559,13 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     const chunks: Blob[] = [];
     const recorder = new MediaRecorder(combinedStream, {
       mimeType: mimeType,
-      videoBitsPerSecond: 5_000_000,
-      audioBitsPerSecond: 192_000,
+      videoBitsPerSecond: 4_000_000,
+      audioBitsPerSecond: 128_000,
     });
     recorder.ondataavailable = function(e) { if (e.data.size > 0) chunks.push(e.data); };
 
-    // Start recording
     recorder.start();
-    const recordStartMs = Date.now();
 
-    // Keep canvas fresh
     let drawVerse = verses[0];
     let frameRunning = true;
     const redrawLoop = function() {
@@ -683,7 +590,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       setDownloadProgress(Math.round(5 + (i / verses.length) * 20));
     }
 
-    // Play each verse through the audio destination
+    // Play each verse
     for (let i = 0; i < verses.length; i++) {
       drawVerse = verses[i];
       drawVerseOnCanvas(ctx, verses[i], format.width, format.height, bgImg);
@@ -706,11 +613,8 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     frameRunning = false;
     setDownloadProgress(92);
 
-    // Stop recorder and collect the blob
     const rawBlob = await new Promise<Blob>(function(resolve) {
-      recorder.onstop = function() {
-        resolve(new Blob(chunks, { type: mimeType }));
-      };
+      recorder.onstop = function() { resolve(new Blob(chunks, { type: mimeType })); };
       recorder.stop();
     });
 
@@ -720,16 +624,8 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       throw new Error('Recording produced an empty file');
     }
 
-    // Defragment the fMP4 into a proper non-fragmented MP4 with correct duration
-    // MediaRecorder produces fragmented MP4 where duration = 0xFFFFFFFF (~1988 hours on iOS)
-    setDownloadProgress(94);
-    try {
-      const properMp4 = await defragmentMP4(rawBlob, format.width, format.height);
-      return properMp4;
-    } catch (e) {
-      console.error('Defragmentation failed, using raw blob:', e);
-      return rawBlob;
-    }
+    // Return raw blob directly — no post-processing that could corrupt the file
+    return rawBlob;
   }
 
   // Download as video WITH AUDIO — auto-selects best method for the browser
@@ -748,10 +644,22 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
       drawVerseOnCanvas(ctx, verses[0], format.width, format.height, bgImg);
 
-      // Use WebCodecs on Chrome/Edge (correct duration), MediaRecorder on Safari/iPhone
+      // Try WebCodecs first (correct duration on ALL devices), fall back to MediaRecorder
       let blob: Blob;
-      if (hasWebCodecs()) {
-        blob = await downloadVideoWebCodecs(bgImg, canvas, ctx);
+      const webCodecsAvailable = await checkWebCodecs();
+      if (webCodecsAvailable) {
+        try {
+          blob = await downloadVideoWebCodecs(bgImg, canvas, ctx);
+        } catch (wcErr) {
+          console.error('WebCodecs failed, falling back to MediaRecorder:', wcErr);
+          // Reset progress and try MediaRecorder
+          setDownloadProgress(0);
+          if (typeof MediaRecorder !== 'undefined') {
+            blob = await downloadVideoMediaRecorder(bgImg, canvas, ctx);
+          } else {
+            throw wcErr;
+          }
+        }
       } else if (typeof MediaRecorder !== 'undefined') {
         blob = await downloadVideoMediaRecorder(bgImg, canvas, ctx);
       } else {
