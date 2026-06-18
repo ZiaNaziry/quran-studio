@@ -355,6 +355,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
   // Test WebCodecs by actually encoding a frame + audio chunk
   const probeWebCodecs = async (): Promise<{
     videoCodec: string; audioCodec: string; audioMux: 'aac' | 'opus';
+    hw: 'prefer-hardware' | 'prefer-software' | 'no-preference';
   } | null> => {
     try {
       const VE = (globalThis as any).VideoEncoder;
@@ -372,6 +373,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         'no-preference', 'prefer-hardware', 'prefer-software',
       ];
       let workingVC = '';
+      let workingHW: 'prefer-hardware' | 'prefer-software' | 'no-preference' = 'no-preference';
 
       outer: for (const hw of hwModes) {
         for (const codec of vProfiles) {
@@ -406,7 +408,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
             await te.flush();
             te.close();
 
-            if (gotOut && !gotErr) { workingVC = codec; break outer; }
+            if (gotOut && !gotErr) { workingVC = codec; workingHW = hw; break outer; }
           } catch {}
         }
       }
@@ -444,7 +446,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       }
       if (!workingAC) return null;
 
-      return { videoCodec: workingVC, audioCodec: workingAC, audioMux: aMux };
+      return { videoCodec: workingVC, audioCodec: workingAC, audioMux: aMux, hw: workingHW };
     } catch { return null; }
   };
 
@@ -471,7 +473,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
   // PATH A: WebCodecs offline encode — perfect MP4 with correct duration
   const webCodecsEncode = async (
-    codecInfo: { videoCodec: string; audioCodec: string; audioMux: 'aac' | 'opus' },
+    codecInfo: { videoCodec: string; audioCodec: string; audioMux: 'aac' | 'opus'; hw: string },
     audioBuffers: (AudioBuffer | null)[],
     bgImg: HTMLImageElement | null,
   ): Promise<Blob | null> => {
@@ -507,6 +509,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       vEnc.configure({
         codec: codecInfo.videoCodec, width: format.width, height: format.height,
         bitrate: 4_000_000, framerate: 30,
+        hardwareAcceleration: codecInfo.hw,
       });
       if (vEnc.state !== 'configured') { try { vEnc.close(); } catch {} return null; }
 
