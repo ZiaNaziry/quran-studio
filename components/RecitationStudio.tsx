@@ -690,7 +690,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     } catch { return null; }
   };
 
-  // Remux fragmented MP4 → flat MP4 (fixes TikTok compatibility)
+  // Re-encode fragmented MP4 → clean MP4 (fixes TikTok duration + keyframes)
   const remuxToFlatMp4 = async (blob: Blob): Promise<Blob> => {
     const { FFmpeg } = await import('@ffmpeg/ffmpeg');
     const ffmpeg = new FFmpeg();
@@ -700,7 +700,15 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     });
     const inputData = new Uint8Array(await blob.arrayBuffer());
     await ffmpeg.writeFile('input.mp4', inputData);
-    await ffmpeg.exec(['-fflags', '+genpts+discardcorrupt', '-i', 'input.mp4', '-c', 'copy', '-movflags', '+faststart', '-avoid_negative_ts', 'make_zero', 'output.mp4']);
+    // Full re-encode: rebuilds keyframes + timestamps for TikTok compatibility
+    await ffmpeg.exec([
+      '-i', 'input.mp4',
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-crf', '23',
+      '-c:a', 'aac', '-b:a', '128k',
+      '-movflags', '+faststart',
+      '-r', '30',
+      'output.mp4'
+    ]);
     const outputData = await ffmpeg.readFile('output.mp4');
     ffmpeg.terminate();
     const bytes = outputData instanceof Uint8Array ? outputData : new TextEncoder().encode(outputData as string);
