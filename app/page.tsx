@@ -165,6 +165,18 @@ export default function Home() {
             </div>
             <span className="text-lg font-bold hidden sm:block" style={{ color: 'var(--text-primary)' }}>Quran SM Download</span>
           </button>
+          <a
+            href="https://www.tiktok.com/@zia_naziry"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-xs font-medium transition-all duration-200 hover:scale-105"
+            style={{ color: 'var(--accent)' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 0 0-.79-.05A6.34 6.34 0 0 0 3.15 15a6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.34-6.34V8.69a8.28 8.28 0 0 0 4.76 1.51v-3.5a4.84 4.84 0 0 1-1-.01z" />
+            </svg>
+            @zia_naziry
+          </a>
           <div className="flex items-center gap-2">
             {view !== 'home' && view !== 'feedback' && (
               <button onClick={() => setView('feedback')} className="px-3 py-2 rounded-lg text-sm font-medium transition-all hover:scale-105" style={{ color: 'var(--text-secondary)' }}>
