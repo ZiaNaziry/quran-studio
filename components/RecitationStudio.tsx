@@ -511,81 +511,115 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     return new Blob([mp4Buffer], { type: 'video/mp4' });
   }
 
-  // Fix MP4 duration by patching mvhd/tkhd/mdhd atoms in fragmented MP4
-  // MediaRecorder (both Chrome & Safari) produces fMP4 where duration = 0xFFFFFFFF (unknown),
-  // which players display as ~1988 hours. We overwrite with the real duration.
-  function fixMp4Duration(buffer: ArrayBuffer, durationSec: number): ArrayBuffer {
-    const result = new Uint8Array(buffer).slice().buffer;
-    const view = new DataView(result);
-    const bytes = new Uint8Array(result);
+  // Defragment MP4: converts fragmented MP4 (from MediaRecorder) to standard non-fragmented MP4
+  // fMP4 has duration=0xFFFFFFFF which iOS shows as ~1988 hours. Patching headers doesn't fix it
+  // because iOS recomputes duration from fragments. Solution: fully defragment using mp4box.js parser
+  // + mp4-muxer to create a proper standard MP4 with correct duration.
+  async function defragmentMP4(blob: Blob, w: number, h: number): Promise<Blob> {
+    const MP4BoxMod: any = await import('mp4box');
+    const MP4Box = MP4BoxMod.default || MP4BoxMod;
+    const buffer = await blob.arrayBuffer();
+    const file = MP4Box.createFile();
 
-    const findAtoms = function(type: string): number[] {
-      const positions: number[] = [];
-      const c0 = type.charCodeAt(0), c1 = type.charCodeAt(1);
-      const c2 = type.charCodeAt(2), c3 = type.charCodeAt(3);
-      for (let i = 0; i <= bytes.length - 8; i++) {
-        if (bytes[i + 4] === c0 && bytes[i + 5] === c1 && bytes[i + 6] === c2 && bytes[i + 7] === c3) {
-          positions.push(i);
+    let videoTrack: any = null;
+    let audioTrack: any = null;
+    const samplesMap = new Map<number, any[]>();
+
+    return new Promise<Blob>(function(resolve, reject) {
+      file.onReady = function(info: any) {
+        for (const track of info.tracks) {
+          samplesMap.set(track.id, []);
+          if (track.type === 'video' && !videoTrack) videoTrack = track;
+          else if (track.type === 'audio' && !audioTrack) audioTrack = track;
+          file.setExtractionOptions(track.id, track, { nbSamples: 500000 });
         }
-      }
-      return positions;
-    };
+        file.start();
+      };
 
-    let movieTimescale = 1000;
+      file.onSamples = function(trackId: number, _user: any, samples: any[]) {
+        const arr = samplesMap.get(trackId);
+        if (arr) arr.push(...samples);
+      };
 
-    // Patch mvhd (movie header) — sets overall movie duration
-    for (const pos of findAtoms('mvhd')) {
-      const version = bytes[pos + 8];
-      if (version === 0) {
-        movieTimescale = view.getUint32(pos + 20);
-        const dur = Math.round(durationSec * movieTimescale);
-        view.setUint32(pos + 24, dur);
-      } else if (version === 1) {
-        movieTimescale = view.getUint32(pos + 28);
-        const dur = Math.round(durationSec * movieTimescale);
-        const high = Math.floor(dur / 4294967296);
-        const low = dur % 4294967296;
-        view.setUint32(pos + 32, high);
-        view.setUint32(pos + 36, low);
-      }
-    }
+      file.onError = function(e: any) { reject(e); };
 
-    // Patch tkhd (track headers) — uses movie timescale
-    for (const pos of findAtoms('tkhd')) {
-      const version = bytes[pos + 8];
-      const dur = Math.round(durationSec * movieTimescale);
-      if (version === 0) {
-        view.setUint32(pos + 28, dur);
-      } else if (version === 1) {
-        const high = Math.floor(dur / 4294967296);
-        const low = dur % 4294967296;
-        view.setUint32(pos + 36, high);
-        view.setUint32(pos + 40, low);
-      }
-    }
+      // Feed the entire fMP4 buffer
+      (buffer as any).fileStart = 0;
+      file.appendBuffer(buffer);
+      file.flush();
 
-    // Patch mdhd (media headers) — each track has its own timescale
-    for (const pos of findAtoms('mdhd')) {
-      const version = bytes[pos + 8];
-      if (version === 0) {
-        const ts = view.getUint32(pos + 20);
-        if (ts > 0) {
-          const dur = Math.round(durationSec * ts);
-          view.setUint32(pos + 24, dur);
+      // By now onReady + onSamples have fired synchronously
+      try {
+        const videoSamples = videoTrack ? (samplesMap.get(videoTrack.id) || []) : [];
+        const audioSamples = audioTrack ? (samplesMap.get(audioTrack.id) || []) : [];
+
+        if (videoSamples.length === 0) {
+          reject(new Error('No video samples found in fMP4'));
+          return;
         }
-      } else if (version === 1) {
-        const ts = view.getUint32(pos + 28);
-        if (ts > 0) {
-          const dur = Math.round(durationSec * ts);
-          const high = Math.floor(dur / 4294967296);
-          const low = dur % 4294967296;
-          view.setUint32(pos + 32, high);
-          view.setUint32(pos + 36, low);
-        }
-      }
-    }
 
-    return result;
+        // Extract avcC codec description from binary (needed for mp4-muxer stsd)
+        const bytes = new Uint8Array(buffer);
+        let videoDesc: Uint8Array | undefined;
+        for (let i = 0; i < bytes.length - 8; i++) {
+          if (bytes[i+4]===0x61 && bytes[i+5]===0x76 && bytes[i+6]===0x63 && bytes[i+7]===0x43) {
+            const sz = (bytes[i]<<24)|(bytes[i+1]<<16)|(bytes[i+2]<<8)|bytes[i+3];
+            if (sz > 8 && sz < 2000 && i + sz <= bytes.length) {
+              videoDesc = bytes.slice(i + 8, i + sz);
+              break;
+            }
+          }
+        }
+
+        // Build a proper non-fragmented MP4 with mp4-muxer
+        const target = new ArrayBufferTarget();
+        const muxer = new Muxer({
+          target,
+          video: videoTrack ? {
+            codec: 'avc',
+            width: videoTrack.video?.width || w,
+            height: videoTrack.video?.height || h,
+          } : undefined,
+          audio: audioTrack ? {
+            codec: 'aac',
+            numberOfChannels: audioTrack.audio?.channel_count || 2,
+            sampleRate: audioTrack.audio?.sample_rate || 48000,
+          } : undefined,
+          fastStart: 'in-memory',
+          firstTimestampBehavior: 'offset',
+        });
+
+        // Helper: extract sample bytes regardless of data type
+        const getSampleBytes = function(s: any): Uint8Array {
+          if (s.data instanceof ArrayBuffer) return new Uint8Array(s.data);
+          if (s.data && s.data.buffer) return new Uint8Array(s.data.buffer, s.data.byteOffset, s.data.byteLength);
+          return new Uint8Array(s.data);
+        };
+
+        // Add video samples
+        for (let i = 0; i < videoSamples.length; i++) {
+          const s = videoSamples[i];
+          const tsMicro = Math.round(s.cts * 1_000_000 / s.timescale);
+          const durMicro = Math.round(s.duration * 1_000_000 / s.timescale);
+          const isKey = !!(s.is_sync || s.is_rap);
+          const meta: any = (i === 0 && videoDesc) ? { decoderConfig: { description: videoDesc } } : undefined;
+          muxer.addVideoChunkRaw(getSampleBytes(s), isKey ? 'key' : 'delta', tsMicro, durMicro, meta);
+        }
+
+        // Add audio samples
+        for (let i = 0; i < audioSamples.length; i++) {
+          const s = audioSamples[i];
+          const tsMicro = Math.round(s.cts * 1_000_000 / s.timescale);
+          const durMicro = Math.round(s.duration * 1_000_000 / s.timescale);
+          muxer.addAudioChunkRaw(getSampleBytes(s), 'key', tsMicro, durMicro);
+        }
+
+        muxer.finalize();
+        resolve(new Blob([target.buffer], { type: 'video/mp4' }));
+      } catch (e) {
+        reject(e);
+      }
+    });
   }
 
   // ===== PATH B: MediaRecorder fallback (Safari/iPhone) =====
@@ -686,15 +720,14 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       throw new Error('Recording produced an empty file');
     }
 
-    // Fix MP4 duration — MediaRecorder produces fragmented MP4 with broken/missing duration
-    // We know the exact recording time, so patch mvhd/tkhd/mdhd atoms
-    const durationSec = (Date.now() - recordStartMs) / 1000;
+    // Defragment the fMP4 into a proper non-fragmented MP4 with correct duration
+    // MediaRecorder produces fragmented MP4 where duration = 0xFFFFFFFF (~1988 hours on iOS)
+    setDownloadProgress(94);
     try {
-      const rawBuffer = await rawBlob.arrayBuffer();
-      const fixedBuffer = fixMp4Duration(rawBuffer, durationSec);
-      return new Blob([fixedBuffer], { type: rawBlob.type });
+      const properMp4 = await defragmentMP4(rawBlob, format.width, format.height);
+      return properMp4;
     } catch (e) {
-      console.error('Duration fix failed, using raw blob:', e);
+      console.error('Defragmentation failed, using raw blob:', e);
       return rawBlob;
     }
   }
