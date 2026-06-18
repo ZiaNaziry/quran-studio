@@ -682,6 +682,23 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     } catch { return null; }
   };
 
+  // Remux fragmented MP4 → flat MP4 (fixes TikTok compatibility)
+  const remuxToFlatMp4 = async (blob: Blob): Promise<Blob> => {
+    const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+    const ffmpeg = new FFmpeg();
+    await ffmpeg.load({
+      coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js',
+      wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm',
+    });
+    const inputData = new Uint8Array(await blob.arrayBuffer());
+    await ffmpeg.writeFile('input.mp4', inputData);
+    await ffmpeg.exec(['-i', 'input.mp4', '-c', 'copy', '-movflags', '+faststart', 'output.mp4']);
+    const outputData = await ffmpeg.readFile('output.mp4');
+    ffmpeg.terminate();
+    const bytes = outputData instanceof Uint8Array ? outputData : new TextEncoder().encode(outputData as string);
+    return new Blob([bytes.buffer as ArrayBuffer], { type: 'video/mp4' });
+  };
+
   // Main download orchestrator
   async function downloadVideo() {
     setIsDownloading(true);
@@ -704,12 +721,14 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
       // Step 3: Try WebCodecs path first
       let blob: Blob | null = null;
+      let usedMediaRecorder = false;
       if (codecInfo) {
         blob = await webCodecsEncode(codecInfo, audioBuffers, bgImg);
       }
 
       // Step 4: Fall back to MediaRecorder if WebCodecs failed
       if (!blob) {
+        usedMediaRecorder = true;
         setDownloadProgress(28);
         blob = await mediaRecorderFallback(audioBuffers, bgImg);
       }
@@ -717,6 +736,16 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       if (!blob || blob.size < 1000) {
         alert('Could not create video. Please try using Chrome browser for best results.');
         setIsDownloading(false); setDownloadType(''); return;
+      }
+
+      // Step 5: Remux MediaRecorder fMP4 → flat MP4 (fixes TikTok/social media)
+      if (usedMediaRecorder && blob.type.includes('mp4')) {
+        setDownloadProgress(94);
+        try {
+          blob = await remuxToFlatMp4(blob);
+        } catch {
+          // ffmpeg remux failed — use raw blob (works on most platforms)
+        }
       }
 
       setDownloadProgress(98);
