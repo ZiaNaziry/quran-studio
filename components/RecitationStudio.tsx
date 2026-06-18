@@ -672,13 +672,8 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         setDownloadProgress(Math.round(30 + (i / verses.length) * 60));
       }
 
-      // Pad 15 seconds of silence after last verse — TikTok trims ~14s from fMP4
-      // Generate real silence audio so audio track extends to match video
-      const silenceBuf = aCtx.createBuffer(1, aCtx.sampleRate * 15, aCtx.sampleRate);
-      const silSrc = aCtx.createBufferSource();
-      silSrc.buffer = silenceBuf;
-      silSrc.connect(dest);
-      await new Promise<void>(resolve => { silSrc.onended = () => resolve(); silSrc.start(); });
+      // Brief padding after last verse
+      await new Promise(r => setTimeout(r, 2000));
 
       setDownloadProgress(93);
       // Flush any buffered data before stopping
@@ -695,7 +690,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     } catch { return null; }
   };
 
-  // Remux fragmented MP4 → clean MP4 (copy video, re-encode audio to AAC)
+  // Remux fragmented MP4 → flat MP4 (fixes duration + seeking)
   const remuxToFlatMp4 = async (blob: Blob): Promise<Blob> => {
     const { FFmpeg } = await import('@ffmpeg/ffmpeg');
     const ffmpeg = new FFmpeg();
@@ -705,17 +700,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     });
     const inputData = new Uint8Array(await blob.arrayBuffer());
     await ffmpeg.writeFile('input.mp4', inputData);
-    // Copy video stream as-is, re-encode audio to AAC for maximum compatibility
-    await ffmpeg.exec([
-      '-fflags', '+genpts',
-      '-i', 'input.mp4',
-      '-c:v', 'copy',
-      '-c:a', 'aac', '-b:a', '128k',
-      '-map_metadata', '-1',
-      '-movflags', '+faststart',
-      '-avoid_negative_ts', 'make_zero',
-      'output.mp4'
-    ]);
+    await ffmpeg.exec(['-fflags', '+genpts+discardcorrupt', '-i', 'input.mp4', '-c', 'copy', '-movflags', '+faststart', '-avoid_negative_ts', 'make_zero', 'output.mp4']);
     const outputData = await ffmpeg.readFile('output.mp4');
     ffmpeg.terminate();
     const bytes = outputData instanceof Uint8Array ? outputData : new TextEncoder().encode(outputData as string);
