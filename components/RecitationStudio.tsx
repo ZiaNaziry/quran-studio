@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Surah, Verse, Background, GradientBackground, PhotoBackground, BgTab, VideoFormat } from '../lib/types';
+import { Surah, Verse, Background, GradientBackground, PhotoBackground, VideoBackground, BgTab, VideoFormat } from '../lib/types';
 import { reciters, getAudioUrl } from '../lib/reciters';
 import { gradients, photos, photoCategories, PhotoCategory, videoFormats, getGradientCSS } from '../lib/backgrounds';
 import { Language, t } from '../lib/i18n';
@@ -23,6 +23,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
   const [photoCategory, setPhotoCategory] = useState<PhotoCategory>('all');
   const [photoSearch, setPhotoSearch] = useState('');
   const [importedImage, setImportedImage] = useState<string | null>(null);
+  const [importedVideo, setImportedVideo] = useState<string | null>(null);
   const [showTranslation, setShowTranslation] = useState(true);
 
   const [isDownloading, setIsDownloading] = useState(false);
@@ -37,6 +38,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const playingRef = useRef(false);
+  const bgVideoRef = useRef<HTMLVideoElement | null>(null);
   const idxRef = useRef(0);
 
   const currentVerse = verses[currentIndex];
@@ -159,13 +161,21 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
   function handleFileImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function(ev) {
-      const dataUrl = ev.target?.result as string;
-      setImportedImage(dataUrl);
-      setSelectedBg({ id: 'imported', name: 'Imported', type: 'photo', category: 'import', url: dataUrl, thumb: dataUrl } as PhotoBackground);
-    };
-    reader.readAsDataURL(file);
+    if (file.type.startsWith('video/')) {
+      if (importedVideo) URL.revokeObjectURL(importedVideo);
+      const url = URL.createObjectURL(file);
+      setImportedVideo(url);
+      setSelectedBg({ id: 'imported-video', name: 'Imported Video', type: 'video', url: url } as VideoBackground);
+    } else {
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        const dataUrl = ev.target?.result as string;
+        setImportedImage(dataUrl);
+        setSelectedBg({ id: 'imported', name: 'Imported', type: 'photo', category: 'import', url: dataUrl, thumb: dataUrl } as PhotoBackground);
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = '';
   }
 
   // Canvas text wrapping
@@ -205,15 +215,22 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
   }
 
   // Draw verse on canvas — centered vertically
-  function drawVerseOnCanvas(ctx: CanvasRenderingContext2D, verse: Verse, w: number, h: number, bgImg?: HTMLImageElement | null) {
+  function drawVerseOnCanvas(ctx: CanvasRenderingContext2D, verse: Verse, w: number, h: number, bgImg?: HTMLImageElement | HTMLVideoElement | null) {
     // Background
     if (bgImg) {
-      const imgR = bgImg.naturalWidth / bgImg.naturalHeight;
-      const canR = w / h;
-      let sx = 0, sy = 0, sw = bgImg.naturalWidth, sh = bgImg.naturalHeight;
-      if (imgR > canR) { sw = bgImg.naturalHeight * canR; sx = (bgImg.naturalWidth - sw) / 2; }
-      else { sh = bgImg.naturalWidth / canR; sy = (bgImg.naturalHeight - sh) / 2; }
-      ctx.drawImage(bgImg, sx, sy, sw, sh, 0, 0, w, h);
+      const srcW = bgImg instanceof HTMLVideoElement ? bgImg.videoWidth : bgImg.naturalWidth;
+      const srcH = bgImg instanceof HTMLVideoElement ? bgImg.videoHeight : bgImg.naturalHeight;
+      if (srcW > 0 && srcH > 0) {
+        const imgR = srcW / srcH;
+        const canR = w / h;
+        let sx = 0, sy = 0, sw = srcW, sh = srcH;
+        if (imgR > canR) { sw = srcH * canR; sx = (srcW - sw) / 2; }
+        else { sh = srcW / canR; sy = (srcH - sh) / 2; }
+        ctx.drawImage(bgImg, sx, sy, sw, sh, 0, 0, w, h);
+      } else {
+        ctx.fillStyle = '#111827';
+        ctx.fillRect(0, 0, w, h);
+      }
     } else if (selectedBg.type === 'gradient') {
       const g = selectedBg as GradientBackground;
       const grad = ctx.createLinearGradient(0, 0, w, h);
@@ -292,7 +309,20 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     ctx.textBaseline = 'alphabetic';
   }
 
-  function loadBgImageAsync(): Promise<HTMLImageElement | null> {
+  function loadBgImageAsync(): Promise<HTMLImageElement | HTMLVideoElement | null> {
+    if (selectedBg.type === 'video') {
+      const vb = selectedBg as VideoBackground;
+      return new Promise(function(resolve) {
+        const video = document.createElement('video');
+        video.muted = true;
+        video.loop = true;
+        video.playsInline = true;
+        video.preload = 'auto';
+        video.addEventListener('canplay', function() { resolve(video); }, { once: true });
+        video.onerror = function() { resolve(null); };
+        video.src = vb.url;
+      });
+    }
     if (selectedBg.type !== 'photo') return Promise.resolve(null);
     const pb = selectedBg as PhotoBackground;
     return new Promise(function(resolve) {
@@ -621,13 +651,16 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
   // PATH B: MediaRecorder real-time fallback — plays fine, duration metadata may vary
   const mediaRecorderFallback = async (
     audioBuffers: (AudioBuffer | null)[],
-    bgImg: HTMLImageElement | null,
+    bgImg: HTMLImageElement | HTMLVideoElement | null,
   ): Promise<Blob | null> => {
     try {
       const canvas = document.createElement('canvas');
       canvas.width = format.width; canvas.height = format.height;
       const ctx = canvas.getContext('2d');
       if (!ctx) return null;
+
+      const isVideoBg = bgImg instanceof HTMLVideoElement;
+      const bgVid = isVideoBg ? bgImg : null;
       drawVerseOnCanvas(ctx, verses[0], format.width, format.height, bgImg);
 
       const vStream = canvas.captureStream(30);
@@ -654,11 +687,27 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       const rec = new MediaRecorder(vStream, { mimeType: mime, videoBitsPerSecond: 4_000_000 });
       rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
+      // Animation loop for video backgrounds — redraws canvas at ~30fps
+      const verseState = { idx: 0 };
+      let animId = 0;
+      if (bgVid) {
+        bgVid.currentTime = 0;
+        try { await bgVid.play(); } catch {}
+        const animate = () => {
+          drawVerseOnCanvas(ctx, verses[verseState.idx], format.width, format.height, bgVid);
+          animId = requestAnimationFrame(animate);
+        };
+        animate();
+      }
+
       rec.start();
       setDownloadProgress(30);
 
       for (let i = 0; i < verses.length; i++) {
-        drawVerseOnCanvas(ctx, verses[i], format.width, format.height, bgImg);
+        verseState.idx = i;
+        if (!isVideoBg) {
+          drawVerseOnCanvas(ctx, verses[i], format.width, format.height, bgImg);
+        }
         const ab = audioBuffers[i];
         if (ab) {
           const src = aCtx.createBufferSource();
@@ -670,6 +719,11 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         }
         if (i < verses.length - 1) await new Promise(r => setTimeout(r, 300));
         setDownloadProgress(Math.round(30 + (i / verses.length) * 60));
+      }
+
+      if (bgVid) {
+        cancelAnimationFrame(animId);
+        bgVid.pause();
       }
 
       setDownloadProgress(93);
@@ -719,14 +773,15 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       await tempCtx.close();
       setDownloadProgress(24);
 
-      // Step 3: Try WebCodecs path first
+      // Step 3: Try WebCodecs path first (skip for video backgrounds — needs real-time playback)
+      const isVideoBg = bgImg instanceof HTMLVideoElement;
       let blob: Blob | null = null;
       let usedMediaRecorder = false;
-      if (codecInfo) {
-        blob = await webCodecsEncode(codecInfo, audioBuffers, bgImg);
+      if (codecInfo && !isVideoBg) {
+        blob = await webCodecsEncode(codecInfo, audioBuffers, bgImg as HTMLImageElement | null);
       }
 
-      // Step 4: Fall back to MediaRecorder if WebCodecs failed
+      // Step 4: Fall back to MediaRecorder if WebCodecs failed or video bg
       if (!blob) {
         usedMediaRecorder = true;
         setDownloadProgress(28);
@@ -763,6 +818,9 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     if (selectedBg.type === 'gradient') {
       return { background: getGradientCSS(selectedBg as GradientBackground) };
     }
+    if (selectedBg.type === 'video') {
+      return { background: '#000' };
+    }
     const pb = selectedBg as PhotoBackground;
     return { backgroundImage: 'url(' + pb.url + ')', backgroundSize: 'cover', backgroundPosition: 'center' };
   }
@@ -771,7 +829,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
   return (
     <div className="min-h-screen animate-fade-in" style={{ background: 'var(--bg-primary)' }} dir={dir}>
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileImport} />
+      <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileImport} />
 
       {/* Download overlay */}
       {isDownloading && (
@@ -941,6 +999,11 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
                       <img src={importedImage} alt="Imported" className="w-full h-full object-cover" />
                     </button>
                   )}
+                  {importedVideo && (
+                    <button onClick={function() { setSelectedBg({ id: 'imported-video', name: 'Imported Video', type: 'video', url: importedVideo } as VideoBackground); }} className="mt-2 w-full rounded-xl overflow-hidden" style={{ outline: selectedBg.id === 'imported-video' ? '2px solid var(--accent)' : '2px solid transparent', outlineOffset: '2px', height: 60 }}>
+                      <video src={importedVideo} muted loop autoPlay playsInline className="w-full h-full object-cover" />
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -979,6 +1042,9 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
           <div className="flex items-center justify-center p-3 sm:p-6 overflow-y-auto max-h-[45vh] lg:max-h-[70vh]" style={{ background: 'var(--bg-primary)' }}>
             <div className="rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: format.ratio, maxHeight: '100%', maxWidth: '100%', width: isDesktop ? (format.id === 'portrait' ? 320 : format.id === 'square' ? 400 : format.id === 'social' ? 360 : 560) : (format.id === 'portrait' ? 200 : format.id === 'square' ? 240 : format.id === 'social' ? 220 : 320) }}>
               <div className="w-full h-full flex flex-col items-center justify-center p-6 sm:p-10 relative" style={getPreviewStyle()}>
+                {selectedBg.type === 'video' && importedVideo && (
+                  <video ref={bgVideoRef} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" src={importedVideo} />
+                )}
                 <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,' + (overlayOpacity / 100) + ')' }} />
                 <div className="relative z-10 text-center w-full">
                   <p className="text-white/40 text-[10px] font-medium mb-4 tracking-widest uppercase">{surah.englishName} - {t('studio.verse', lang)} {currentVerse?.numberInSurah}</p>

@@ -41,7 +41,14 @@ export interface PhotoBackground {
   thumb: string;
 }
 
-export type Background = GradientBackground | PhotoBackground;
+export interface VideoBackground {
+  id: string;
+  name: string;
+  type: 'video';
+  url: string;
+}
+
+export type Background = GradientBackground | PhotoBackground | VideoBackground;
 
 export interface VideoFormat {
   id: string;
