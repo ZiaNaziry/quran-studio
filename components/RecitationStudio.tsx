@@ -54,17 +54,32 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     return function() { window.removeEventListener('resize', check); };
   }, []);
 
-  // Create audio element once
+  // Two audio elements for gapless playback — one plays while the other preloads
+  const nextAudioRef = useRef<HTMLAudioElement | null>(null);
   useEffect(() => {
     const a = new Audio();
+    const b = new Audio();
     audioRef.current = a;
-    return () => { a.pause(); a.removeAttribute('src'); a.load(); };
+    nextAudioRef.current = b;
+    return () => { a.pause(); a.removeAttribute('src'); a.load(); b.pause(); b.removeAttribute('src'); b.load(); };
   }, []);
 
-  // Simple play function
+  // Preload helper — silently loads next verse audio into the spare element
+  function preloadNext(index: number) {
+    const next = nextAudioRef.current;
+    if (!next || index >= verses.length) return;
+    const v = verses[index];
+    const url = getAudioUrl(reciter, surah.number, v.numberInSurah, v.number);
+    next.preload = 'auto';
+    next.src = url;
+    next.load();
+  }
+
+  // Gapless play — swap audio elements on each verse
   function playFrom(index: number) {
     const audio = audioRef.current;
-    if (!audio || index >= verses.length) {
+    const nextAudio = nextAudioRef.current;
+    if (!audio || !nextAudio || index >= verses.length) {
       setIsPlaying(false);
       playingRef.current = false;
       return;
@@ -74,13 +89,35 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     setCurrentIndex(index);
     idxRef.current = index;
 
+    // Check if the spare element already has this verse preloaded
     const url = getAudioUrl(reciter, surah.number, verse.numberInSurah, verse.number);
-    audio.onended = null;
-    audio.onerror = null;
-    audio.pause();
-    audio.src = url;
+    const usePre = nextAudio.src && nextAudio.src === new URL(url, location.href).href;
 
-    audio.onended = function() {
+    // Pick which element to use — preloaded one if ready, otherwise load fresh
+    const active = usePre ? nextAudio : audio;
+    const spare = usePre ? audio : nextAudio;
+
+    // Stop the other
+    spare.pause();
+    spare.onended = null;
+    spare.onerror = null;
+
+    // Make active the main ref
+    audioRef.current = active;
+    nextAudioRef.current = spare;
+
+    if (!usePre) {
+      active.onended = null;
+      active.onerror = null;
+      active.src = url;
+    }
+
+    // Preload next verse into spare element
+    if (index + 1 < verses.length) {
+      preloadNext.call(null, index + 1);
+    }
+
+    active.onended = function() {
       const nextIdx = idxRef.current + 1;
       if (nextIdx < verses.length && playingRef.current) {
         playFrom(nextIdx);
@@ -90,25 +127,31 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       }
     };
 
-    audio.onerror = function() {
+    active.onerror = function() {
       const nextIdx = idxRef.current + 1;
       if (nextIdx < verses.length && playingRef.current) {
-        setTimeout(function() { playFrom(nextIdx); }, 500);
+        playFrom(nextIdx);
       } else {
         setIsPlaying(false);
         playingRef.current = false;
       }
     };
 
-    audio.play().catch(function() {
+    active.play().catch(function() {
       setIsPlaying(false);
       playingRef.current = false;
     });
   }
 
+  // Stop both audio elements
+  function stopAllAudio() {
+    audioRef.current?.pause();
+    nextAudioRef.current?.pause();
+  }
+
   function handlePlay() {
     if (isPlaying) {
-      audioRef.current?.pause();
+      stopAllAudio();
       setIsPlaying(false);
       playingRef.current = false;
     } else {
@@ -120,7 +163,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
   function handleNext() {
     if (currentIndex < verses.length - 1) {
-      audioRef.current?.pause();
+      stopAllAudio();
       const next = currentIndex + 1;
       setCurrentIndex(next);
       idxRef.current = next;
@@ -130,7 +173,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
   function handlePrev() {
     if (currentIndex > 0) {
-      audioRef.current?.pause();
+      stopAllAudio();
       const prev = currentIndex - 1;
       setCurrentIndex(prev);
       idxRef.current = prev;
@@ -139,14 +182,14 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
   }
 
   function handleVerseClick(i: number) {
-    audioRef.current?.pause();
+    stopAllAudio();
     setCurrentIndex(i);
     idxRef.current = i;
     if (isPlaying) playFrom(i);
   }
 
   function handleReciterChange(i: number) {
-    audioRef.current?.pause();
+    stopAllAudio();
     setReciterIdx(i);
     setIsPlaying(false);
     playingRef.current = false;
@@ -613,26 +656,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
           aTs += 3_000_000;
         }
 
-        // 300ms gap
-        if (i < verses.length - 1) {
-          const gf = Math.ceil(0.3 * fps);
-          for (let f = 0; f < gf; f++) {
-            while (vEnc.encodeQueueSize > 10) await new Promise(r => setTimeout(r, 1));
-            const fr = new VF(canvas, { timestamp: vTs });
-            vEnc.encode(fr, { keyFrame: false });
-            fr.close();
-            vTs += fDur; nFrames++;
-          }
-          const gs = Math.ceil(0.3 * 44100);
-          const gd = new Float32Array(gs * 2);
-          const ga = new AD({
-            format: 'f32-planar' as const, sampleRate: 44100,
-            numberOfFrames: gs, numberOfChannels: 2,
-            timestamp: aTs, data: gd,
-          });
-          aEnc.encode(ga); ga.close();
-          aTs += Math.round(0.3 * 1_000_000);
-        }
+        // No gap between verses — smooth continuous playback
 
         setDownloadProgress(Math.round(25 + (i / verses.length) * 65));
       }
@@ -717,7 +741,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         } else {
           await new Promise(r => setTimeout(r, 3000));
         }
-        if (i < verses.length - 1) await new Promise(r => setTimeout(r, 300));
+        // No gap — smooth continuous playback
         setDownloadProgress(Math.round(30 + (i / verses.length) * 60));
       }
 
@@ -854,7 +878,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       <div className="border-b" style={{ borderColor: 'var(--border)' }}>
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={function() { audioRef.current?.pause(); setIsPlaying(false); onBack(); }} className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:scale-110" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            <button onClick={function() { stopAllAudio(); setIsPlaying(false); onBack(); }} className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:scale-110" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-primary)' }}><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             </button>
             <div>
