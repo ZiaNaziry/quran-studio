@@ -388,6 +388,18 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         video.loop = true;
         video.playsInline = true;
         video.preload = 'auto';
+        // Manual loop fallback — Safari doesn't always honour loop on blob URLs / offscreen elements
+        video.addEventListener('ended', function() {
+          video.currentTime = 0;
+          video.play().catch(function() {});
+        });
+        // Hide in DOM so Safari treats it as a real media element
+        video.style.position = 'fixed';
+        video.style.left = '-9999px';
+        video.style.width = '1px';
+        video.style.height = '1px';
+        video.style.opacity = '0';
+        document.body.appendChild(video);
         video.addEventListener('canplay', function() { resolve(video); }, { once: true });
         video.onerror = function() { resolve(null); };
         video.src = vb.url;
@@ -775,6 +787,8 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       if (bgVid) {
         cancelAnimationFrame(animId);
         bgVid.pause();
+        // Remove hidden DOM element used for Safari compatibility
+        if (bgVid.parentNode) bgVid.parentNode.removeChild(bgVid);
       }
 
       setDownloadProgress(93);
@@ -1103,7 +1117,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
                   <div className="w-full relative overflow-hidden" style={{ aspectRatio: format.frame.innerRatio, borderRadius: 16 }}>
                     <div className="absolute inset-0" style={getPreviewStyle()} />
                     {selectedBg.type === 'video' && importedVideo && (
-                      <video ref={bgVideoRef} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" src={importedVideo} />
+                      <video ref={bgVideoRef} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" src={importedVideo} onEnded={function(e) { e.currentTarget.currentTime = 0; e.currentTarget.play().catch(function(){}); }} />
                     )}
                     <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,' + (overlayOpacity / 100) + ')' }} />
                     <div className="relative z-10 w-full h-full flex flex-col items-center justify-center p-4 text-center">
@@ -1122,7 +1136,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center p-6 sm:p-10 relative" style={getPreviewStyle()}>
                   {selectedBg.type === 'video' && importedVideo && (
-                    <video ref={bgVideoRef} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" src={importedVideo} />
+                    <video ref={bgVideoRef} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" src={importedVideo} onEnded={function(e) { e.currentTarget.currentTime = 0; e.currentTarget.play().catch(function(){}); }} />
                   )}
                   <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,' + (overlayOpacity / 100) + ')' }} />
                   <div className="relative z-10 text-center w-full">
