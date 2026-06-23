@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Surah, Verse, Background, GradientBackground, PhotoBackground, VideoBackground, BgTab, VideoFormat } from '../lib/types';
+import { Surah, Verse, Background, GradientBackground, PhotoBackground, VideoBackground, BgTab, VideoFormat, FrameConfig } from '../lib/types';
 import { reciters, getAudioUrl } from '../lib/reciters';
 import { gradients, photos, photoCategories, PhotoCategory, videoFormats, getGradientCSS } from '../lib/backgrounds';
 import { Language, t } from '../lib/i18n';
@@ -257,39 +257,65 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     return cy;
   }
 
-  // Draw verse on canvas — centered vertically
-  function drawVerseOnCanvas(ctx: CanvasRenderingContext2D, verse: Verse, w: number, h: number, bgImg?: HTMLImageElement | HTMLVideoElement | null) {
-    // Background
+  // Draw verse on canvas — centered vertically, supports framed formats
+  function drawVerseOnCanvas(ctx: CanvasRenderingContext2D, verse: Verse, w: number, h: number, bgImg?: HTMLImageElement | HTMLVideoElement | null, frame?: FrameConfig) {
+    // For framed formats: draw black bg, then clip rounded inner rect
+    let dw = w, dh = h;
+
+    if (frame) {
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, w, h);
+
+      const pad = Math.round(frame.padding * w);
+      dw = w - 2 * pad;
+      dh = Math.round(dw / frame.innerRatio);
+      const dx = pad;
+      const dy = Math.round((h - dh) / 2);
+      const r = Math.round(frame.radius * (w / 1080));
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(dx + r, dy);
+      ctx.arcTo(dx + dw, dy, dx + dw, dy + dh, r);
+      ctx.arcTo(dx + dw, dy + dh, dx, dy + dh, r);
+      ctx.arcTo(dx, dy + dh, dx, dy, r);
+      ctx.arcTo(dx, dy, dx + dw, dy, r);
+      ctx.closePath();
+      ctx.clip();
+      ctx.translate(dx, dy);
+    }
+
+    // Background — draw to dw x dh (translated if framed)
     if (bgImg) {
       const srcW = bgImg instanceof HTMLVideoElement ? bgImg.videoWidth : bgImg.naturalWidth;
       const srcH = bgImg instanceof HTMLVideoElement ? bgImg.videoHeight : bgImg.naturalHeight;
       if (srcW > 0 && srcH > 0) {
         const imgR = srcW / srcH;
-        const canR = w / h;
+        const canR = dw / dh;
         let sx = 0, sy = 0, sw = srcW, sh = srcH;
         if (imgR > canR) { sw = srcH * canR; sx = (srcW - sw) / 2; }
         else { sh = srcW / canR; sy = (srcH - sh) / 2; }
-        ctx.drawImage(bgImg, sx, sy, sw, sh, 0, 0, w, h);
+        ctx.drawImage(bgImg, sx, sy, sw, sh, 0, 0, dw, dh);
       } else {
         ctx.fillStyle = '#111827';
-        ctx.fillRect(0, 0, w, h);
+        ctx.fillRect(0, 0, dw, dh);
       }
     } else if (selectedBg.type === 'gradient') {
       const g = selectedBg as GradientBackground;
-      const grad = ctx.createLinearGradient(0, 0, w, h);
+      const grad = ctx.createLinearGradient(0, 0, dw, dh);
       g.colors.forEach(function(c, i) { grad.addColorStop(i / Math.max(g.colors.length - 1, 1), c); });
       ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
+      ctx.fillRect(0, 0, dw, dh);
     } else {
       ctx.fillStyle = '#111827';
-      ctx.fillRect(0, 0, w, h);
+      ctx.fillRect(0, 0, dw, dh);
     }
 
     // Dark overlay
     ctx.fillStyle = 'rgba(0,0,0,' + (overlayOpacity / 100) + ')';
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(0, 0, dw, dh);
 
-    const scale = Math.min(w, h) / 1080;
+    const scale = Math.min(dw, dh) / 1080;
 
     // --- Calculate total content height to center everything ---
     const labelSize = Math.round(16 * scale);
@@ -301,35 +327,33 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
     // Measure Arabic lines
     ctx.font = '600 ' + aSize + 'px serif';
-    const arabicLines = measureTextLines(ctx, verse.text, w * 0.8);
+    const arabicLines = measureTextLines(ctx, verse.text, dw * 0.8);
 
     // Measure translation lines
     let translationLines = 0;
     if (showTranslation && verse.translation) {
       ctx.font = '400 italic ' + tSize + 'px system-ui, sans-serif';
-      translationLines = measureTextLines(ctx, verse.translation, w * 0.75);
+      translationLines = measureTextLines(ctx, verse.translation, dw * 0.75);
     }
 
     // Total height of all content blocks
-    let totalHeight = labelSize; // surah label line
-    totalHeight += gap; // space after label
-    totalHeight += arabicLines * aLineH; // all arabic lines
+    let totalHeight = labelSize;
+    totalHeight += gap;
+    totalHeight += arabicLines * aLineH;
     if (translationLines > 0) {
-      totalHeight += gap; // space before translation
-      totalHeight += translationLines * tLineH; // all translation lines
+      totalHeight += gap;
+      totalHeight += translationLines * tLineH;
     }
 
-    // Y cursor starts so the entire block is vertically centered
-    // Using textBaseline 'top' so fillText draws DOWN from the Y coordinate
     ctx.textBaseline = 'top';
-    let cursorY = (h - totalHeight) / 2;
+    let cursorY = (dh - totalHeight) / 2;
 
-    // Surah name — small label at top of centered block
+    // Surah name
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.font = '500 ' + labelSize + 'px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.direction = 'ltr';
-    ctx.fillText(surah.englishName + ' - ' + t('studio.verse', lang) + ' ' + verse.numberInSurah, w / 2, cursorY);
+    ctx.fillText(surah.englishName + ' - ' + t('studio.verse', lang) + ' ' + verse.numberInSurah, dw / 2, cursorY);
     cursorY += labelSize + gap;
 
     // Arabic text
@@ -337,7 +361,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
     ctx.font = '600 ' + aSize + 'px serif';
     ctx.direction = 'rtl';
     ctx.textAlign = 'center';
-    cursorY = wrapText(ctx, verse.text, w / 2, cursorY, w * 0.8, aLineH);
+    cursorY = wrapText(ctx, verse.text, dw / 2, cursorY, dw * 0.8, aLineH);
 
     // Translation
     if (showTranslation && verse.translation) {
@@ -345,11 +369,14 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       ctx.direction = 'ltr';
       ctx.fillStyle = 'rgba(255,255,255,0.65)';
       ctx.font = '400 italic ' + tSize + 'px system-ui, sans-serif';
-      wrapText(ctx, verse.translation, w / 2, cursorY, w * 0.75, tLineH);
+      wrapText(ctx, verse.translation, dw / 2, cursorY, dw * 0.75, tLineH);
     }
 
-    // Reset baseline
     ctx.textBaseline = 'alphabetic';
+
+    if (frame) {
+      ctx.restore();
+    }
   }
 
   function loadBgImageAsync(): Promise<HTMLImageElement | HTMLVideoElement | null> {
@@ -393,7 +420,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       const ctx = canvas.getContext('2d');
       if (!ctx) { alert('Canvas not supported'); setIsDownloading(false); return; }
 
-      drawVerseOnCanvas(ctx, currentVerse, format.width, format.height, bgImg);
+      drawVerseOnCanvas(ctx, currentVerse, format.width, format.height, bgImg, format.frame);
       setDownloadProgress(80);
 
       const dataUrl = canvas.toDataURL('image/png');
@@ -610,7 +637,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
       for (let i = 0; i < verses.length; i++) {
         if (encErr) throw new Error(encErr);
-        drawVerseOnCanvas(ctx, verses[i], format.width, format.height, bgImg);
+        drawVerseOnCanvas(ctx, verses[i], format.width, format.height, bgImg, format.frame);
 
         const ab = audioBuffers[i];
         const dur = ab ? ab.duration : 3;
@@ -685,7 +712,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
 
       const isVideoBg = bgImg instanceof HTMLVideoElement;
       const bgVid = isVideoBg ? bgImg : null;
-      drawVerseOnCanvas(ctx, verses[0], format.width, format.height, bgImg);
+      drawVerseOnCanvas(ctx, verses[0], format.width, format.height, bgImg, format.frame);
 
       const vStream = canvas.captureStream(30);
       const AC = window.AudioContext || (window as any).webkitAudioContext;
@@ -718,7 +745,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         bgVid.currentTime = 0;
         try { await bgVid.play(); } catch {}
         const animate = () => {
-          drawVerseOnCanvas(ctx, verses[verseState.idx], format.width, format.height, bgVid);
+          drawVerseOnCanvas(ctx, verses[verseState.idx], format.width, format.height, bgVid, format.frame);
           animId = requestAnimationFrame(animate);
         };
         animate();
@@ -730,7 +757,7 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
       for (let i = 0; i < verses.length; i++) {
         verseState.idx = i;
         if (!isVideoBg) {
-          drawVerseOnCanvas(ctx, verses[i], format.width, format.height, bgImg);
+          drawVerseOnCanvas(ctx, verses[i], format.width, format.height, bgImg, format.frame);
         }
         const ab = audioBuffers[i];
         if (ab) {
@@ -897,12 +924,18 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
             {/* Format */}
             <div>
               <label className="text-xs font-semibold uppercase tracking-wider mb-2 block" style={{ color: 'var(--text-secondary)' }}>{t('studio.format', lang)}</label>
-              <div className="grid grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-3 gap-1.5">
                 {videoFormats.map(function(f, i) {
                   return (
                     <button key={f.id} onClick={function() { setFormatIdx(i); }} className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all text-xs font-bold" style={{ background: i === formatIdx ? 'var(--accent-light)' : 'var(--bg-card)', color: i === formatIdx ? 'var(--accent)' : 'var(--text-secondary)', border: i === formatIdx ? '1.5px solid var(--accent)' : '1.5px solid var(--border)' }}>
                       <div className="flex items-center justify-center" style={{ width: 28, height: 28 }}>
-                        <div className="border-2 rounded-sm" style={{ width: f.id === 'landscape' ? 26 : f.id === 'portrait' ? 16 : f.id === 'square' ? 22 : 20, height: f.id === 'landscape' ? 16 : f.id === 'portrait' ? 26 : f.id === 'square' ? 22 : 25, borderColor: i === formatIdx ? 'var(--accent)' : 'var(--text-secondary)' }} />
+                        {f.frame ? (
+                          <div className="relative flex items-center justify-center border-2 rounded-sm" style={{ width: 18, height: 26, borderColor: i === formatIdx ? 'var(--accent)' : 'var(--text-secondary)' }}>
+                            <div className="border-2 rounded-sm" style={{ width: f.id === 'cinematic' ? 12 : 10, height: f.id === 'cinematic' ? 7 : 10, borderColor: i === formatIdx ? 'var(--accent)' : 'var(--text-secondary)' }} />
+                          </div>
+                        ) : (
+                          <div className="border-2 rounded-sm" style={{ width: f.id === 'landscape' ? 26 : f.id === 'portrait' ? 16 : f.id === 'square' ? 22 : 20, height: f.id === 'landscape' ? 16 : f.id === 'portrait' ? 26 : f.id === 'square' ? 22 : 25, borderColor: i === formatIdx ? 'var(--accent)' : 'var(--text-secondary)' }} />
+                        )}
                       </div>
                       {f.label}
                     </button>
@@ -1064,24 +1097,47 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
         <div className="order-1 lg:order-2 flex-1 flex flex-col overflow-hidden">
           {/* Preview — compact on mobile so controls are visible */}
           <div className="flex items-center justify-center p-3 sm:p-6 overflow-y-auto max-h-[45vh] lg:max-h-[70vh]" style={{ background: 'var(--bg-primary)' }}>
-            <div className="rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: format.ratio, maxHeight: '100%', maxWidth: '100%', width: isDesktop ? (format.id === 'portrait' ? 320 : format.id === 'square' ? 400 : format.id === 'social' ? 360 : 560) : (format.id === 'portrait' ? 200 : format.id === 'square' ? 240 : format.id === 'social' ? 220 : 320) }}>
-              <div className="w-full h-full flex flex-col items-center justify-center p-6 sm:p-10 relative" style={getPreviewStyle()}>
-                {selectedBg.type === 'video' && importedVideo && (
-                  <video ref={bgVideoRef} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" src={importedVideo} />
-                )}
-                <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,' + (overlayOpacity / 100) + ')' }} />
-                <div className="relative z-10 text-center w-full">
-                  <p className="text-white/40 text-[10px] font-medium mb-4 tracking-widest uppercase">{surah.englishName} - {t('studio.verse', lang)} {currentVerse?.numberInSurah}</p>
-                  <p className="text-white leading-relaxed mb-4" style={{ fontFamily: 'serif', direction: 'rtl', fontSize: Math.max(14, arabicSize * 0.3) }}>
-                    {currentVerse?.text}
-                  </p>
-                  {showTranslation && currentVerse?.translation && (
-                    <p className="text-white/60 leading-relaxed max-w-md mx-auto italic" style={{ fontSize: Math.max(10, translationSize * 0.3) }}>
-                      {currentVerse.translation}
-                    </p>
-                  )}
+            <div className="rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: format.ratio, maxHeight: '100%', maxWidth: '100%', background: format.frame ? '#000' : undefined, width: isDesktop ? (format.id === 'portrait' || format.frame ? 320 : format.id === 'square' ? 400 : format.id === 'social' ? 360 : 560) : (format.id === 'portrait' || format.frame ? 200 : format.id === 'square' ? 240 : format.id === 'social' ? 220 : 320) }}>
+              {format.frame ? (
+                <div className="w-full h-full flex items-center justify-center" style={{ padding: (format.frame.padding * 100) + '%' }}>
+                  <div className="w-full relative overflow-hidden" style={{ aspectRatio: format.frame.innerRatio, borderRadius: 16 }}>
+                    <div className="absolute inset-0" style={getPreviewStyle()} />
+                    {selectedBg.type === 'video' && importedVideo && (
+                      <video ref={bgVideoRef} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" src={importedVideo} />
+                    )}
+                    <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,' + (overlayOpacity / 100) + ')' }} />
+                    <div className="relative z-10 w-full h-full flex flex-col items-center justify-center p-4 text-center">
+                      <p className="text-white/40 text-[8px] font-medium mb-2 tracking-widest uppercase">{surah.englishName} - {t('studio.verse', lang)} {currentVerse?.numberInSurah}</p>
+                      <p className="text-white leading-relaxed mb-2" style={{ fontFamily: 'serif', direction: 'rtl', fontSize: Math.max(11, arabicSize * 0.22) }}>
+                        {currentVerse?.text}
+                      </p>
+                      {showTranslation && currentVerse?.translation && (
+                        <p className="text-white/60 leading-relaxed max-w-xs mx-auto italic" style={{ fontSize: Math.max(8, translationSize * 0.22) }}>
+                          {currentVerse.translation}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center p-6 sm:p-10 relative" style={getPreviewStyle()}>
+                  {selectedBg.type === 'video' && importedVideo && (
+                    <video ref={bgVideoRef} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" src={importedVideo} />
+                  )}
+                  <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,' + (overlayOpacity / 100) + ')' }} />
+                  <div className="relative z-10 text-center w-full">
+                    <p className="text-white/40 text-[10px] font-medium mb-4 tracking-widest uppercase">{surah.englishName} - {t('studio.verse', lang)} {currentVerse?.numberInSurah}</p>
+                    <p className="text-white leading-relaxed mb-4" style={{ fontFamily: 'serif', direction: 'rtl', fontSize: Math.max(14, arabicSize * 0.3) }}>
+                      {currentVerse?.text}
+                    </p>
+                    {showTranslation && currentVerse?.translation && (
+                      <p className="text-white/60 leading-relaxed max-w-md mx-auto italic" style={{ fontSize: Math.max(10, translationSize * 0.3) }}>
+                        {currentVerse.translation}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

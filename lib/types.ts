@@ -50,12 +50,19 @@ export interface VideoBackground {
 
 export type Background = GradientBackground | PhotoBackground | VideoBackground;
 
+export interface FrameConfig {
+  innerRatio: number;
+  padding: number;
+  radius: number;
+}
+
 export interface VideoFormat {
   id: string;
   label: string;
   width: number;
   height: number;
   ratio: string;
+  frame?: FrameConfig;
 }
 
 export type View = 'home' | 'browse' | 'verses' | 'studio' | 'feedback';

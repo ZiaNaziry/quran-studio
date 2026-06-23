@@ -62,6 +62,8 @@ export const videoFormats: VideoFormat[] = [
   { id: 'portrait', label: '9:16', width: 1080, height: 1920, ratio: '9/16' },
   { id: 'square', label: '1:1', width: 1080, height: 1080, ratio: '1/1' },
   { id: 'social', label: '4:5', width: 1080, height: 1350, ratio: '4/5' },
+  { id: 'cinematic', label: 'Cinema', width: 1080, height: 1920, ratio: '9/16', frame: { innerRatio: 16/9, padding: 0.04, radius: 36 } },
+  { id: 'framed', label: 'Frame', width: 1080, height: 1920, ratio: '9/16', frame: { innerRatio: 3/4, padding: 0.04, radius: 36 } },
 ];
 
 export function getGradientCSS(bg: GradientBackground): string {
