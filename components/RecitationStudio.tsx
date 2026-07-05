@@ -1079,6 +1079,12 @@ export default function RecitationStudio({ surah, verses, onBack, lang }: Props)
               )}
             </div>
 
+            {/* Best on PC tip */}
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--accent)' }}><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              <span>{t('studio.bestOnPC', lang)}</span>
+            </div>
+
             {/* Download instructions */}
             <details className="pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
               <summary className="cursor-pointer text-xs font-semibold flex items-center gap-1.5 select-none" style={{ color: 'var(--accent)' }}>

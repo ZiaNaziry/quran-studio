@@ -11,6 +11,7 @@ const translations: Record<string, Record<Language, string>> = {
   'nav.feedback': { en: 'Feedback', ar: 'ملاحظات', fa: 'بازخورد' },
 
   // Home
+  'studio.bestOnPC': { en: 'For the best experience, use a PC or laptop', ar: 'للحصول على أفضل تجربة، استخدم الكمبيوتر أو اللابتوب', fa: 'برای بهترین تجربه، از کامپیوتر یا لپ‌تاپ استفاده کنید' },
   'studio.downloadTip.title': { en: 'How to Save on iPhone', ar: 'كيفية الحفظ على الآيفون', fa: 'نحوه ذخیره در آیفون' },
   'studio.downloadTip.step1': { en: 'Open this page in Safari', ar: 'افتح هذه الصفحة في Safari', fa: 'این صفحه را در Safari باز کنید' },
   'studio.downloadTip.step2': { en: 'Tap the download button below', ar: 'اضغط على زر التحميل أدناه', fa: 'دکمه دانلود زیر را بزنید' },
